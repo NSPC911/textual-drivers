@@ -30,7 +30,7 @@ _WINDOW_BUFFER_SIZE_EVENT = 0x0004
 
 
 class _CustomEventMonitor(win32.EventMonitor):
-    """EventMonitor that respects the stdin lock and dispatches custom handlers."""
+    """EventMonitor that honours lock_stdin() and dispatches custom handlers."""
 
     def __init__(
         self,
@@ -38,14 +38,14 @@ class _CustomEventMonitor(win32.EventMonitor):
         app: App,
         exit_event: threading.Event,
         process_event: Callable[[Event], None],
-        stdin_lock: threading.Lock,
         dispatch_handlers: Callable[[str], None],
+        pause_point: Callable[[], None],
     ) -> None:
         super().__init__(loop, app, exit_event, process_event)
-        self._stdin_lock = stdin_lock
         self._dispatch_handlers = dispatch_handlers
+        self._pause_point = pause_point
 
-    def run(self) -> None:  # noqa: C901
+    def run(self) -> None:
         exit_requested = self.exit_event.is_set
         parser = XTermParser(debug=constants.DEBUG)
 
@@ -60,48 +60,50 @@ class _CustomEventMonitor(win32.EventMonitor):
             keys: list[str] = []
 
             while not exit_requested():
+                # Pause point: blocks here while lock_stdin() is held.
+                self._pause_point()
+
                 for event in parser.tick():
                     self.process_event(event)
 
                 if wait_for_handles([hIn], 100) is None:
                     continue
 
-                with self._stdin_lock:
-                    ReadConsoleInputW(
-                        hIn, byref(input_records), MAX_EVENTS, byref(read_count)
+                ReadConsoleInputW(
+                    hIn, byref(input_records), MAX_EVENTS, byref(read_count)
+                )
+                read_input_records = input_records[: read_count.value]
+
+                del keys[:]
+                new_size: tuple[int, int] | None = None
+
+                for input_record in read_input_records:
+                    event_type = input_record.EventType
+                    if event_type == _KEY_EVENT:
+                        key_event = input_record.Event.KeyEvent
+                        key = key_event.uChar.UnicodeChar
+                        if key_event.bKeyDown:
+                            if (
+                                key_event.dwControlKeyState
+                                and key_event.wVirtualKeyCode == 0
+                            ):
+                                continue
+                            keys.append(key)
+                    elif event_type == _WINDOW_BUFFER_SIZE_EVENT:
+                        size = input_record.Event.WindowBufferSizeEvent.dwSize
+                        new_size = (size.X, size.Y)
+
+                if keys:
+                    # https://github.com/Textualize/textual/issues/3178
+                    key_string = (
+                        "".join(keys).encode("utf-16", "surrogatepass").decode("utf-16")
                     )
-                    read_input_records = input_records[: read_count.value]
+                    self._dispatch_handlers(key_string)
+                    for event in parser.feed(key_string):
+                        self.process_event(event)
 
-                    del keys[:]
-                    new_size: tuple[int, int] | None = None
-
-                    for input_record in read_input_records:
-                        event_type = input_record.EventType
-                        if event_type == _KEY_EVENT:
-                            key_event = input_record.Event.KeyEvent
-                            key = key_event.uChar.UnicodeChar
-                            if key_event.bKeyDown:
-                                if (
-                                    key_event.dwControlKeyState
-                                    and key_event.wVirtualKeyCode == 0
-                                ):
-                                    continue
-                                keys.append(key)
-                        elif event_type == _WINDOW_BUFFER_SIZE_EVENT:
-                            size = input_record.Event.WindowBufferSizeEvent.dwSize
-                            new_size = (size.X, size.Y)
-
-                    if keys:
-                        # https://github.com/Textualize/textual/issues/3178
-                        key_string = (
-                            "".join(keys).encode("utf-16", "surrogatepass").decode("utf-16")
-                        )
-                        self._dispatch_handlers(key_string)
-                        for event in parser.feed(key_string):
-                            self.process_event(event)
-
-                    if new_size is not None:
-                        self.on_size_change(*new_size)
+                if new_size is not None:
+                    self.on_size_change(*new_size)
 
         except Exception as error:
             self.app.log.error("EVENT MONITOR ERROR", error)
@@ -144,7 +146,7 @@ class CustomWindowsDriver(CustomDriverMixin, WindowsDriver):
             self._app,
             self.exit_event,
             self.process_message,
-            self._stdin_lock,
             self._dispatch_custom_handlers,
+            self._stdin_pause_point,
         )
         self._event_thread.start()

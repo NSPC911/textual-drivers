@@ -16,7 +16,7 @@ class CustomLinuxDriver(CustomDriverMixin, LinuxDriver):
     """LinuxDriver with lock_stdin and register_event_handler support."""
 
     def run_input_thread(self) -> None:
-        """Wait for input, honouring the stdin lock and custom handlers."""
+        """Wait for input, honouring lock_stdin() and custom handlers."""
         selector = selectors.SelectSelector()
         selector.register(self.fileno, selectors.EVENT_READ)
 
@@ -47,7 +47,8 @@ class CustomLinuxDriver(CustomDriverMixin, LinuxDriver):
 
         try:
             while not self.exit_event.is_set():
-                with self._stdin_lock:
+                self._stdin_pause_point()
+                if not self.exit_event.is_set():
                     process_selector_events(selector.select(0.1))
             selector.unregister(self.fileno)
             process_selector_events(selector.select(0.1), final=True)
