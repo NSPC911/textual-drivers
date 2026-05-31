@@ -53,30 +53,47 @@ MyApp().run(driver_class=Driver)
 
 ### `lock_stdin`
 
-Use `with self.app._driver.lock_stdin():` to freeze the driver's stdin thread for the duration of the block. The implementation uses a `threading.Condition`: the input thread voluntarily stops at its next pause point (at most one read cycle, ≤ ~100 ms), sets an acknowledged flag, and then waits. Only after that acknowledgement does `lock_stdin()` yield — so there is no race between your code and the driver consuming stdin.
+Use `with self.app._driver.lock_stdin():` to take exclusive ownership of stdin for the duration of the block. On entry it:
+
+1. Pauses the driver's stdin reader thread (cooperative pause via `threading.Condition`, ≤ ~100 ms to acknowledge).
+2. Disables all terminal event reporting that Textual enables: mouse, focus tracking, kitty key protocol, and bracketed paste — so no unsolicited escape sequences can arrive while you hold the lock.
+3. Waits 50 ms for any already-in-transit events to land in the OS buffer before yielding, so a `_drain` call at the top of the block reliably clears them.
+
+On exit, event reporting is re-enabled and the input thread resumes. Nesting is supported; the disable/re-enable only happens on the outermost entry and exit.
+
+> **Note:** Plain key events cannot be disabled via escape sequences. Drain stdin at the start of the block to discard any buffered keypresses, then send your query — the terminal response arrives in < 1 ms, before the user can type another character.
+
+> **Note:** `lock_stdin()` pauses Textual's stdin reader and silences terminal events, but does not restore the terminal to cooked/canonical mode. If your subprocess needs line-buffered input (e.g. `input()` or a shell), call `suspend_application_mode()` instead.
 
 ```python
+import os
+import select
 import subprocess
+import sys
 from textual.app import App, ComposeResult
 from textual.widgets import Button
 
 
 class MyApp(App):
     def compose(self) -> ComposeResult:
-        yield Button("Open editor")
+        yield Button("Query terminal")
 
     def on_button_pressed(self) -> None:
-        # run_worker(thread=True) runs on a background thread, where blocking is fine
-        self.run_worker(self._open_editor, thread=True)
+        self.run_worker(self._query, thread=True)
 
-    def _open_editor(self) -> None:
+    def _query(self) -> None:
+        fd = sys.stdin.fileno()
         with self.app._driver.lock_stdin():
-            # The input thread is confirmed paused before this line runs.
-            # stdin is free for the subprocess to use.
-            subprocess.run(["vim", "/tmp/note.txt"])
+            # Drain buffered keypresses, then read the terminal's response directly.
+            while select.select([fd], [], [], 0)[0]:
+                os.read(fd, 4096)
+            self.app._driver.write("\x1b[c")   # Primary Device Attributes query
+            self.app._driver.flush()
+            # Read until the response terminator 'c' arrives (< 1 ms round trip).
+            buf = b""
+            while b"c" not in buf:
+                buf += os.read(fd, 4096)
 ```
-
-> **Note:** `lock_stdin()` only pauses Textual's stdin reader — it does not restore the terminal to cooked/canonical mode. If your subprocess needs line-buffered input (e.g. `input()` or a shell), call `suspend_application_mode()` instead, which also restores terminal settings.
 
 ### `register_event_handler`
 
