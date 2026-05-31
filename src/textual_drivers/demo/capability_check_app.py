@@ -36,6 +36,13 @@ else:
 
 def _drain(fd: int) -> None:
     """Discard all bytes currently buffered on fd without blocking."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        while msvcrt.kbhit():
+            msvcrt.getwch()
+        return
+
     while select.select([fd], [], [], 0)[0]:
         os.read(fd, 4096)
 
@@ -48,6 +55,19 @@ def _read_until(fd: int, terminator: bytes, timeout: float) -> bytes:
     """
     buf = b""
     deadline = time.monotonic() + timeout
+    if sys.platform == "win32":
+        import msvcrt
+
+        while time.monotonic() < deadline:
+            if msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                buf += ch.encode("utf-8", errors="replace")
+                if terminator in buf:
+                    break
+            else:
+                time.sleep(0.01)
+        return buf
+
     while time.monotonic() < deadline:
         remaining = deadline - time.monotonic()
         r, _, _ = select.select([fd], [], [], min(0.1, remaining))
