@@ -39,17 +39,17 @@ else:
 class SingleCharInput(Message):
     """Fired when a single-character raw stdin chunk is received."""
 
-    def __init__(self, pattern: str) -> None:
+    def __init__(self, data: str) -> None:
         super().__init__()
-        self.pattern = pattern
+        self.data = data
 
 
 class EscapeSeqInput(Message):
     """Fired when a raw stdin chunk begins with ESC (arrow keys, etc.)."""
 
-    def __init__(self, pattern: str) -> None:
+    def __init__(self, data: str) -> None:
         super().__init__()
-        self.pattern = pattern
+        self.data = data
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ class DriverTestApp(App):
             f'Pattern "?"    single-char  matches: {self._single_count}'
         )
         self.query_one("#handler-log", Log).write_line(
-            f"[{_ts()}] single-char  pattern={event.pattern!r}"
+            f"[{_ts()}] single-char  data={event.data!r}"
         )
 
     def on_escape_seq_input(self, event: EscapeSeqInput) -> None:
@@ -176,7 +176,7 @@ class DriverTestApp(App):
             f'Pattern "\\x1b*"  ESC-seq      matches: {self._esc_count}'
         )
         self.query_one("#handler-log", Log).write_line(
-            f"[{_ts()}] escape-seq   pattern={event.pattern!r}"
+            f"[{_ts()}] escape-seq   data={event.data!r}"
         )
 
 
