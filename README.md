@@ -8,26 +8,19 @@ Drop-in subclasses of Textual's built-in terminal drivers that add two features:
 ## Installation
 
 ```
-pip install textual-drivers
-```
-
-Or with [uv](https://docs.astral.sh/uv/):
-
-```
 uv add textual-drivers
 ```
 
 ## Drivers
 
-| Class | Replaces |
-|---|---|
-| `textual_drivers.linux_driver.CustomLinuxDriver` | `textual.drivers.linux_driver.LinuxDriver` |
+| Class                                                         | Replaces                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------- |
+| `textual_drivers.linux_driver.CustomLinuxDriver`              | `textual.drivers.linux_driver.LinuxDriver`              |
 | `textual_drivers.linux_inline_driver.CustomLinuxInlineDriver` | `textual.drivers.linux_inline_driver.LinuxInlineDriver` |
-| `textual_drivers.windows_driver.CustomWindowsDriver` | `textual.drivers.windows_driver.WindowsDriver` |
-| `textual_drivers.headless_driver.CustomHeadlessDriver` | `textual.drivers.headless_driver.HeadlessDriver` |
+| `textual_drivers.windows_driver.CustomWindowsDriver`          | `textual.drivers.windows_driver.WindowsDriver`          |
+| `textual_drivers.headless_driver.CustomHeadlessDriver`        | `textual.drivers.headless_driver.HeadlessDriver`        |
 
 ## Usage
-
 ### Selecting the driver
 
 Pass the driver class to `App.run()`:
