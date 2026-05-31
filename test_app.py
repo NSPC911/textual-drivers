@@ -13,12 +13,14 @@ Right panel — register_event_handler
       "\\x1b*"  matches any ESC-led sequence  → fires on arrow / function keys
     Both counters and a live log show matches in real time.
 """
+
 from __future__ import annotations
 
+import asyncio
 import sys
 import time
 
-from textual import events
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -32,6 +34,7 @@ else:
 
 
 # ── Custom messages ──────────────────────────────────────────────────────────
+
 
 class SingleCharInput(Message):
     """Fired when a single-character raw stdin chunk is received."""
@@ -50,6 +53,7 @@ class EscapeSeqInput(Message):
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
+
 
 class DriverTestApp(App):
     """Test app for CustomLinuxDriver / CustomWindowsDriver features."""
@@ -125,41 +129,35 @@ class DriverTestApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "lock-btn":
             event.button.disabled = True
-            self.run_worker(self._run_lock, thread=True)
+            self._run_lock()
 
-    def _run_lock(self) -> None:
+    @work
+    async def _run_lock(self) -> None:
         """Worker thread: holds lock_stdin for 3 s, updating the UI each second."""
         status = self.query_one("#lock-status", Label)
         btn = self.query_one("#lock-btn", Button)
         key_log = self.query_one("#key-log", Log)
 
-        self.call_from_thread(
-            key_log.write_line,
-            f"[{_ts()}] --- lock acquired ---",
-        )
+        key_log.write_line(f"[{_ts()}] --- lock acquired ---")
 
         with self._driver.lock_stdin():
             for remaining in (3, 2, 1):
-                self.call_from_thread(
-                    status.update, f"Status: LOCKED — {remaining}s"
-                )
-                self.call_from_thread(status.set_class, True, "locked")
-                self.call_from_thread(status.set_class, False, "unlocked")
-                time.sleep(1)
+                status.update(f"Status: LOCKED — {remaining}s")
+                status.set_class(True, "locked")
+                status.set_class(False, "unlocked")
+                self.notify("hi", timeout=1)
+                await asyncio.sleep(1)
 
-        self.call_from_thread(
-            key_log.write_line,
-            f"[{_ts()}] --- lock released — buffered keys appear below ---",
+        key_log.write_line(
+            f"[{_ts()}] --- lock released — buffered keys appear below ---"
         )
-        self.call_from_thread(status.update, "Status: unlocked")
-        self.call_from_thread(status.set_class, True, "unlocked")
-        self.call_from_thread(status.set_class, False, "locked")
-        self.call_from_thread(setattr, btn, "disabled", False)
+        status.update("Status: unlocked")
+        status.set_class(True, "unlocked")
+        status.set_class(False, "locked")
+        btn.disabled = False
 
     def on_key(self, event: events.Key) -> None:
-        self.query_one("#key-log", Log).write_line(
-            f"[{_ts()}] key={event.key!r}"
-        )
+        self.query_one("#key-log", Log).write_line(f"[{_ts()}] key={event.key!r}")
 
     # ── register_event_handler panel ─────────────────────────────────────────
 
