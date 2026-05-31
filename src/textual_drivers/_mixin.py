@@ -137,12 +137,18 @@ class EventHandlerMixin:
         self._event_handlers.append((pattern, event_constructor))
 
     def _dispatch_custom_handlers(self, data: str) -> None:
-        for pattern, constructor in self._event_handlers:
-            if fnmatch.fnmatch(data, pattern):
-                event = constructor(data)
-                if isinstance(event, Message):
-                    event.set_sender(self._app)  # type: ignore[attr-defined]
-                    self.send_message(event)  # type: ignore[attr-defined]
+        # for cases where multiple data is incoming, we split them based on
+        # `\x1b` (ESC) and check each chunk against the registered patterns.
+        for chunk in data.split("\x1b"):
+            if not chunk:
+                continue
+            chunk = "\x1b" + chunk
+            for pattern, constructor in self._event_handlers:
+                if fnmatch.fnmatch(chunk, pattern):
+                    event = constructor(chunk)
+                    if isinstance(event, Message):
+                        event.set_sender(self._app)  # type: ignore[attr-defined]
+                        self.send_message(event)  # type: ignore[attr-defined]
 
 
 class CustomDriverMixin(LockStdinMixin, EventHandlerMixin):
