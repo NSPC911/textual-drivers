@@ -23,15 +23,12 @@ import select
 import sys
 import time
 
-from textual.app import App, ComposeResult
+from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Button, Footer, Header, Label, Log
 
-if sys.platform == "win32":
-    from textual_drivers.windows_driver import CustomWindowsDriver as _Driver
-else:
-    from textual_drivers.linux_driver import CustomLinuxDriver as _Driver
+from textual_drivers import DrivenApp
 
 
 def _drain(fd: int) -> None:
@@ -79,7 +76,7 @@ def _read_until(fd: int, terminator: bytes, timeout: float) -> bytes:
     return buf
 
 
-class CapabilityCheckApp(App):
+class CapabilityCheckApp(DrivenApp):
     """Check terminal support for Sixel graphics and the Kitty image protocol."""
 
     TITLE = "Terminal Capability Checker"
@@ -231,4 +228,4 @@ def _ts() -> str:
 
 
 if __name__ == "__main__":
-    CapabilityCheckApp(driver_class=_Driver).run()
+    CapabilityCheckApp().run()

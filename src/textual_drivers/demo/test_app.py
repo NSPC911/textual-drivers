@@ -17,21 +17,16 @@ Right panel — register_event_handler
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
 
 from textual import events, work
-from textual.app import App, ComposeResult
+from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Button, Footer, Header, Label, Log
 
-if sys.platform == "win32":
-    from textual_drivers.windows_driver import CustomWindowsDriver as _Driver
-else:
-    from textual_drivers.linux_driver import CustomLinuxDriver as _Driver
-
+from textual_drivers import DrivenApp
 
 # ── Custom messages ──────────────────────────────────────────────────────────
 
@@ -55,7 +50,7 @@ class EscapeSeqInput(Message):
 # ── App ──────────────────────────────────────────────────────────────────────
 
 
-class DriverTestApp(App):
+class DriverTestApp(DrivenApp):
     """Test app for CustomLinuxDriver / CustomWindowsDriver features."""
 
     TITLE = "textual-drivers test"
@@ -185,4 +180,4 @@ def _ts() -> str:
 
 
 if __name__ == "__main__":
-    DriverTestApp(driver_class=_Driver).run()
+    DriverTestApp().run()
