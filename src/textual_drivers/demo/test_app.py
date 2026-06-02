@@ -28,7 +28,7 @@ from textual.widgets import Button, Footer, Header, Label, Log
 
 from textual_drivers import DrivenApp
 
-# ── Custom messages ──────────────────────────────────────────────────────────
+# -- Custom messages --
 
 
 class SingleCharInput(Message):
@@ -47,7 +47,7 @@ class EscapeSeqInput(Message):
         self.data = data
 
 
-# ── App ──────────────────────────────────────────────────────────────────────
+# -- App --
 
 
 class DriverTestApp(DrivenApp):
