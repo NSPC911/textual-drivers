@@ -2,8 +2,8 @@
 
 Drop-in subclasses of Textual's built-in terminal drivers that add two features:
 
-- **`lock_stdin`** — a context manager that pauses the driver's stdin reading thread and waits for it to confirm the pause before yielding, letting you run terminal operations (e.g. spawning a subprocess) without interference.
-- **`register_event_handler`** — register a pattern against raw stdin; when input matches, a custom `Message` is posted into Textual's event system. Patterns can be a glob string, a `BoundedPattern(start, end)` for sequences with known delimiters, or a compiled `re.Pattern`.
+- **`lock_stdin`** - a context manager that pauses the driver's stdin reading thread and waits for it to confirm the pause before yielding, letting you run terminal operations (e.g. spawning a subprocess) without interference.
+- **`register_event_handler`** - register a pattern against raw stdin; when input matches, a custom `Message` is posted into Textual's event system. Patterns can be a glob string, a `BoundedPattern(start, end)` for sequences with known delimiters, or a compiled `re.Pattern`.
 
 ## Installation
 
@@ -49,12 +49,12 @@ MyApp().run(driver_class=Driver)
 Use `with self.app._driver.lock_stdin():` to take exclusive ownership of stdin for the duration of the block. On entry it:
 
 1. Pauses the driver's stdin reader thread (cooperative pause via `threading.Condition`, ≤ ~100 ms to acknowledge).
-2. Disables all terminal event reporting that Textual enables: mouse, focus tracking, kitty key protocol, and bracketed paste — so no unsolicited escape sequences can arrive while you hold the lock.
+2. Disables all terminal event reporting that Textual enables: mouse, focus tracking, kitty key protocol, and bracketed paste - so no unsolicited escape sequences can arrive while you hold the lock.
 3. Waits 50 ms for any already-in-transit events to land in the OS buffer before yielding, so a `_drain` call at the top of the block reliably clears them.
 
 On exit, event reporting is re-enabled and the input thread resumes. Nesting is supported; the disable/re-enable only happens on the outermost entry and exit.
 
-> **Note:** Plain key events cannot be disabled via escape sequences. Drain stdin at the start of the block to discard any buffered keypresses, then send your query — the terminal response arrives in < 1 ms, before the user can type another character.
+> **Note:** Plain key events cannot be disabled via escape sequences. Drain stdin at the start of the block to discard any buffered keypresses, then send your query - the terminal response arrives in < 1 ms, before the user can type another character.
 
 > **Note:** `lock_stdin()` pauses Textual's stdin reader and silences terminal events, but does not restore the terminal to cooked/canonical mode. If your subprocess needs line-buffered input (e.g. `input()` or a shell), call `suspend_application_mode()` instead.
 
@@ -100,9 +100,9 @@ Three pattern types are supported:
 | `BoundedPattern(start, end)` | Finds all non-overlapping substrings in the raw data that begin with `start` and end with `end` |
 | `re.Pattern` | Finds all matches of `pattern.finditer(data)` in the raw data |
 
-Normal Textual parsing continues regardless — the custom event fires in addition to any built-in events Textual would normally raise.
+Normal Textual parsing continues regardless - the custom event fires in addition to any built-in events Textual would normally raise.
 
-**Glob example** — detect the terminal's response to a Primary Device Attributes query (`\x1b[c`), which arrives as `\x1b[?<params>c`:
+**Glob example** - detect the terminal's response to a Primary Device Attributes query (`\x1b[c`), which arrives as `\x1b[?<params>c`:
 
 ```python
 from textual.app import App, ComposeResult
@@ -129,7 +129,7 @@ class MyApp(App):
         self.query_one(Label).update(f"Terminal identified: {event.data!r}")
 ```
 
-**`BoundedPattern` example** — match an OSC sequence with a known start prefix and string terminator:
+**`BoundedPattern` example** - match an OSC sequence with a known start prefix and string terminator:
 
 ```python
 import re
@@ -145,7 +145,7 @@ driver.register_event_handler(
 )
 ```
 
-**`re.Pattern` example** — match cursor position reports (`\x1b[row;colR`) with a compiled regex:
+**`re.Pattern` example** - match cursor position reports (`\x1b[row;colR`) with a compiled regex:
 
 ```python
 import re
