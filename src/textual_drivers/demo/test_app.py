@@ -8,15 +8,16 @@ Left panel — lock_stdin
     input thread was truly paused.
 
 Right panel — register_event_handler
-    Two handlers are registered on start-up:
-      "?"     matches exactly one character  → fires on every plain keypress
-      "\\x1b*"  matches any ESC-led sequence  → fires on arrow / function keys
+    Two regex handlers are registered on start-up:
+      r"[^\\x1b]"    matches one non-ESC character  → fires on every plain keypress
+      r"\\x1b[^\\x1b]+"  matches any ESC-led sequence  → fires on arrow / function keys
     Both counters and a live log show matches in real time.
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 
 from textual import events, work
@@ -97,8 +98,8 @@ class DriverTestApp(DrivenApp):
 
         with Vertical(classes="panel"):
             yield Label("register_event_handler", classes="panel-title")
-            yield Label('Pattern "?"    single-char  matches: 0', id="single-label")
-            yield Label('Pattern "\\x1b*"  ESC-seq      matches: 0', id="esc-label")
+            yield Label("Pattern [^\\x1b]   single-char  matches: 0", id="single-label")
+            yield Label("Pattern \\x1b[^\\x1b]+  ESC-seq  matches: 0", id="esc-label")
             yield Label("", classes="hint")
             yield Log(id="handler-log", highlight=True)
 
@@ -109,14 +110,14 @@ class DriverTestApp(DrivenApp):
         self._esc_count = 0
 
         driver = self._driver
-        # "?" matches exactly one character (every plain keypress)
-        driver.register_event_handler("?", SingleCharInput)
-        # "\x1b*" matches any chunk starting with ESC (arrow keys, F-keys, etc.)
-        driver.register_event_handler("\x1b*", EscapeSeqInput)
+        # matches every plain keypress (one non-ESC character per finditer hit)
+        driver.register_event_handler(re.compile(r"[^\x1b]"), SingleCharInput)
+        # matches any ESC-led sequence (arrow keys, F-keys, etc.)
+        driver.register_event_handler(re.compile(r"\x1b[^\x1b]+"), EscapeSeqInput)
 
         log = self.query_one("#handler-log", Log)
-        log.write_line('registered "?"    → SingleCharInput')
-        log.write_line('registered "\\x1b*" → EscapeSeqInput')
+        log.write_line("registered r'[^\\x1b]'      → SingleCharInput")
+        log.write_line("registered r'\\x1b[^\\x1b]+' → EscapeSeqInput")
         log.write_line("─" * 40)
 
     # ── lock_stdin panel ─────────────────────────────────────────────────────
@@ -159,7 +160,7 @@ class DriverTestApp(DrivenApp):
     def on_single_char_input(self, event: SingleCharInput) -> None:
         self._single_count += 1
         self.query_one("#single-label", Label).update(
-            f'Pattern "?"    single-char  matches: {self._single_count}'
+            f"Pattern [^\\x1b]   single-char  matches: {self._single_count}"
         )
         self.query_one("#handler-log", Log).write_line(
             f"[{_ts()}] single-char  data={event.data!r}"
@@ -168,7 +169,7 @@ class DriverTestApp(DrivenApp):
     def on_escape_seq_input(self, event: EscapeSeqInput) -> None:
         self._esc_count += 1
         self.query_one("#esc-label", Label).update(
-            f'Pattern "\\x1b*"  ESC-seq      matches: {self._esc_count}'
+            f"Pattern \\x1b[^\\x1b]+  ESC-seq  matches: {self._esc_count}"
         )
         self.query_one("#handler-log", Log).write_line(
             f"[{_ts()}] escape-seq   data={event.data!r}"
