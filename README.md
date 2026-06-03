@@ -3,7 +3,7 @@
 Drop-in subclasses of Textual's built-in terminal drivers that add two features:
 
 - **`lock_stdin`** — a context manager that pauses the driver's stdin reading thread and waits for it to confirm the pause before yielding, letting you run terminal operations (e.g. spawning a subprocess) without interference.
-- **`register_event_handler`** — register a glob pattern against raw stdin; when input matches, a custom `Message` is posted into Textual's event system.
+- **`register_event_handler`** — register a pattern against raw stdin; when input matches, a custom `Message` is posted into Textual's event system. Patterns can be a glob string, a `BoundedPattern(start, end)` for sequences with known delimiters, or a compiled `re.Pattern`.
 
 ## Installation
 
@@ -90,9 +90,19 @@ class MyApp(App):
 
 ### `register_event_handler`
 
-Register a [glob pattern](https://docs.python.org/3/library/fnmatch.html) matched against each raw decoded stdin chunk. When the pattern matches, `event_constructor(pattern)` is called. If the result is a `textual.message.Message` instance it is posted to the app.
+Register a pattern against each raw decoded stdin chunk. When the pattern matches, `event_constructor(data)` is called with the matched string. If the result is a `textual.message.Message` instance it is posted to the app.
 
-The example below detects the terminal's response to a Primary Device Attributes query (`\x1b[c`), which arrives as `\x1b[?<params>c`. Textual does not consume this sequence, so it arrives as a raw stdin chunk.
+Three pattern types are supported:
+
+| Pattern | Match behaviour |
+| ------- | --------------- |
+| `str` | [Glob](https://docs.python.org/3/library/fnmatch.html) matched against each ESC-tokenised chunk via `fnmatch.fnmatch` |
+| `BoundedPattern(start, end)` | Finds all non-overlapping substrings in the raw data that begin with `start` and end with `end` |
+| `re.Pattern` | Finds all matches of `pattern.finditer(data)` in the raw data |
+
+Normal Textual parsing continues regardless — the custom event fires in addition to any built-in events Textual would normally raise.
+
+**Glob example** — detect the terminal's response to a Primary Device Attributes query (`\x1b[c`), which arrives as `\x1b[?<params>c`:
 
 ```python
 from textual.app import App, ComposeResult
@@ -101,9 +111,9 @@ from textual.widgets import Label
 
 
 class DeviceAttributesReceived(Message):
-    def __init__(self, pattern: str) -> None:
+    def __init__(self, data: str) -> None:
         super().__init__()
-        self.pattern = pattern
+        self.data = data
 
 
 class MyApp(App):
@@ -111,24 +121,40 @@ class MyApp(App):
         yield Label("Waiting for terminal response…")
 
     def on_mount(self) -> None:
-        # Match the CSI ? … c response to a Primary Device Attributes query.
-        self.app._driver.register_event_handler(
-            "\x1b[?*c",
-            DeviceAttributesReceived,
-        )
-        # Send the query; the response lands back as a stdin chunk.
+        self.app._driver.register_event_handler("\x1b[?*c", DeviceAttributesReceived)
         self.app._driver.write("\x1b[c")
         self.app._driver.flush()
 
-    def on_device_attributes_received(
-        self, event: DeviceAttributesReceived
-    ) -> None:
-        self.query_one(Label).update(
-            f"Terminal identified — matched pattern: {event.pattern!r}"
-        )
+    def on_device_attributes_received(self, event: DeviceAttributesReceived) -> None:
+        self.query_one(Label).update(f"Terminal identified: {event.data!r}")
 ```
 
-The pattern is matched with `fnmatch.fnmatch` against the raw unicode string that was just read from stdin. Normal Textual parsing continues regardless — the custom event is sent in addition to any built-in events Textual would normally fire.
+**`BoundedPattern` example** — match an OSC sequence with a known start prefix and string terminator:
+
+```python
+import re
+from textual_drivers import BoundedPattern
+
+_OSC = "\x1b]"
+_ST  = "\x1b\\"
+
+# Fires for every  ESC ] 72 ; t=o: … ESC \  sequence in the incoming data.
+driver.register_event_handler(
+    BoundedPattern(start=f"{_OSC}72;t=o:", end=_ST),
+    DragGestureMsg,
+)
+```
+
+**`re.Pattern` example** — match cursor position reports (`\x1b[row;colR`) with a compiled regex:
+
+```python
+import re
+
+driver.register_event_handler(
+    re.compile(r"\x1b\[(\d+);(\d+)R"),
+    CursorPositionMsg,
+)
+```
 
 ### Using the mixin directly
 

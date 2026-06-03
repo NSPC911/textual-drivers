@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App
 from textual.types import CSSPathType
 
-from textual_drivers._mixin import CustomDriverMixin, EventHandlerMixin, LockStdinMixin
+from textual_drivers._mixin import BoundedPattern, CustomDriverMixin, EventHandlerMixin, LockStdinMixin, Pattern
 from textual_drivers.headless_driver import CustomHeadlessDriver
 
 
@@ -19,6 +19,8 @@ class DrivenApp(App):
 
 __all__ = [
     "DrivenApp",
+    "BoundedPattern",
+    "Pattern",
     "CustomDriverMixin",
     "EventHandlerMixin",
     "LockStdinMixin",

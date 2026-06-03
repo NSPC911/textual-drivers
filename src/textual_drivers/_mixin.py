@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import fnmatch
+import re
 import threading
 import time
 from contextlib import contextmanager
-from typing import Callable, Generator
+from typing import Callable, Generator, NamedTuple, TypeAlias
 
 from textual.message import Message
 
@@ -111,6 +112,41 @@ class LockStdinMixin:
                 self._stdin_is_paused = False
 
 
+class BoundedPattern(NamedTuple):
+    """Match raw stdin data that contains a substring starting with *start* and ending with *end*.
+
+    Useful for terminal sequences with known delimiters, e.g.
+    ``BoundedPattern(start="\\x1b]72;t=o:", end="\\x1b\\\\")``.
+    All non-overlapping matches within the incoming data chunk are dispatched.
+    """
+
+    start: str
+    end: str
+
+
+# Pattern accepted by register_event_handler:
+#   str            – glob matched against tokenised stdin chunks (fnmatch)
+#   BoundedPattern – greedy scan for start/end-delimited substrings
+#   re.Pattern     – finditer over the raw data string
+Pattern: TypeAlias = str | BoundedPattern | re.Pattern[str]
+
+
+def _find_bounded(data: str, start: str, end: str) -> list[str]:
+    """Return all non-overlapping substrings of *data* delimited by *start*…*end*."""
+    results: list[str] = []
+    pos = 0
+    while True:
+        s = data.find(start, pos)
+        if s == -1:
+            break
+        e = data.find(end, s + len(start))
+        if e == -1:
+            break
+        results.append(data[s : e + len(end)])
+        pos = e + len(end)
+    return results
+
+
 class EventHandlerMixin:
     """Mixin that adds register_event_handler to Textual drivers.
 
@@ -122,33 +158,45 @@ class EventHandlerMixin:
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._event_handlers: list[tuple[str, Callable[[str], object]]] = []
+        self._event_handlers: list[tuple[Pattern, Callable[[str], object]]] = []
 
     def register_event_handler(
-        self, pattern: str, event_constructor: Callable[[str], object]
+        self, pattern: Pattern, event_constructor: Callable[[str], object]
     ) -> None:
-        """Register a handler fired when raw stdin input matches a glob pattern.
+        """Register a handler fired when raw stdin input matches *pattern*.
 
         Args:
-            pattern: Glob pattern matched against decoded stdin chunks via fnmatch.
+            pattern: One of three forms —
+                ``str``: glob matched against tokenised stdin chunks (fnmatch);
+                ``BoundedPattern(start, end)``: fires for every non-overlapping
+                substring in the chunk that begins with *start* and ends with *end*;
+                ``re.Pattern``: fires for every match of ``pattern.finditer(data)``.
             event_constructor: Called with the matched data string; if the
                 result is a Message instance it is posted to the app.
         """
         self._event_handlers.append((pattern, event_constructor))
 
     def _dispatch_custom_handlers(self, data: str) -> None:
-        # for cases where multiple data is incoming, we split them based on
-        # `\x1b` (ESC) and check each chunk against the registered patterns.
-        for chunk in data.split("\x1b"):
-            if not chunk:
-                continue
-            chunk = "\x1b" + chunk
-            for pattern, constructor in self._event_handlers:
-                if fnmatch.fnmatch(chunk, pattern):
-                    event = constructor(chunk)
-                    if isinstance(event, Message):
-                        event.set_sender(self._app)  # type: ignore[attr-defined]
-                        self.send_message(event)  # type: ignore[attr-defined]
+        for pattern, constructor in self._event_handlers:
+            if isinstance(pattern, BoundedPattern):
+                chunks = _find_bounded(data, pattern.start, pattern.end)
+            elif isinstance(pattern, re.Pattern):
+                chunks = [m.group() for m in pattern.finditer(data)]
+            else:
+                # str glob: split on ESC so each escape sequence is checked individually
+                chunks = []
+                for part in data.split("\x1b"):
+                    if not part:
+                        continue
+                    chunks.append("\x1b" + part)
+
+            for chunk in chunks:
+                if isinstance(pattern, str) and not fnmatch.fnmatch(chunk, pattern):
+                    continue
+                event = constructor(chunk)
+                if isinstance(event, Message):
+                    event.set_sender(self._app)  # type: ignore[attr-defined]
+                    self.send_message(event)  # type: ignore[attr-defined]
 
 
 class CustomDriverMixin(LockStdinMixin, EventHandlerMixin):
