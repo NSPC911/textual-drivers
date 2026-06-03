@@ -12,7 +12,7 @@ from textual.message import Message
 # Every terminal event mode Textual enables on start-up that can be toggled:
 #   mouse (1000/1002/1003/1006), focus tracking (1004),
 #   kitty key protocol (>1u), bracketed paste (2004).
-# Plain key events have no toggle — see LockStdinMixin.lock_stdin docstring.
+# Plain key events have no toggle - see LockStdinMixin.lock_stdin docstring.
 _EVENTS_DISABLE = (
     "\x1b[?1003l"  # mouse: all-motion off
     "\x1b[?1002l"  # mouse: drag off
