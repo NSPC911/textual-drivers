@@ -178,8 +178,8 @@ class DragOutApp(DrivenApp):
         # Send drag icon: x=-1 is the icon slot, y=0 = UTF-8 text format,
         # X/Y = thumbnail dimensions in cells, o=0 = full opacity.
         n = len(selected)
-        icon = f"{n} file{'s' if n != 1 else ''}"
-        self._write(_osc72(f"t=p:x=-1:y=0:X={len(icon)}:Y=1:o=0", _b64(icon)))
+        icon = f"(rovr) {n} file{'s' if n != 1 else ''} selected"
+        self._write(_osc72(f"t=p:x=-1:y=0:X={len(icon)}:Y=10:o=0", _b64(icon)))
         self._log(f"Sent drag icon: {icon!r}")
 
         # Start the drag
