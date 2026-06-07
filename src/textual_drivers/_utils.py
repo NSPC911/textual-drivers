@@ -2,7 +2,7 @@ import time
 from collections.abc import Callable
 from functools import wraps
 from inspect import isawaitable, iscoroutinefunction
-from typing import Any
+from typing import Any, Protocol
 
 from textual.dom import DOMNode
 from textual.message import Message
@@ -89,3 +89,31 @@ def throttle(delay: float) -> Callable[[Callable[..., Any]], Callable[..., Any]]
             return wrapper
 
     return decorator
+
+
+class MessageLike(Protocol):
+    def __init__(self, data: str) -> None: ...
+
+
+def safe(cls: type[MessageLike]) -> Callable[[str], Message | None]:
+    def factory(data: str) -> Message | None:
+        try:
+            return cls(data)
+        except (ValueError, NotImplementedError):
+            return None
+    return factory
+
+
+def b64decode(data: str | bytes) -> str:
+    import base64
+    if isinstance(data, str):
+        data = data.encode()
+    data += b"=" * (-len(data) % 4)
+    return base64.b64decode(data).decode()
+
+
+def b64encode(data: str | bytes) -> str:
+    import base64
+    if isinstance(data, str):
+        data = data.encode()
+    return base64.b64encode(data).decode()

@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from contextlib import contextmanager
-from typing import Callable, Generator, NamedTuple, TypeAlias
+from typing import Any, Callable, Generator, NamedTuple, TypeAlias
 
 from textual.message import Message
 
@@ -161,7 +161,7 @@ class EventHandlerMixin:
         self._event_handlers: list[tuple[Pattern, Callable[[str], object]]] = []
 
     def register_event_handler(
-        self, pattern: Pattern, event_constructor: Callable[[str], object]
+        self, pattern: Pattern, event_constructor: Callable[[str], Message | Any]
     ) -> None:
         """Register a handler fired when raw stdin input matches *pattern*.
 
