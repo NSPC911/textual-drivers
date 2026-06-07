@@ -1,7 +1,7 @@
 [project]
 name = "textual-drivers"
 version = "0.1.0"
-description = "Add your description here"
+description = "Drop-in Textual drivers with lock_stdin, register_event_handler, and kitty DnD support"
 readme = "README.md"
 authors = [
     { name = "NSPC911", email = "87571998+NSPC911@users.noreply.github.com" }
