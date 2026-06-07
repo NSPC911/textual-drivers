@@ -196,6 +196,8 @@ class DNDApp(DrivenApp):
         self._write(_osc72("t=P:x=-1"))
 
     def on_dnddrop_data(self, event: DNDDropData) -> None:
+        if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
+            return
         self._data_buf += event.chunk
         if event.more:
             return
@@ -261,6 +263,13 @@ class DNDApp(DrivenApp):
         self._data_mime_idx = index
         self._data_buf = b""
         self._write(_osc72(f"t=r:x={index + 1}"))
+
+    async def action_quit(self) -> None:
+        if self._drag_active:
+            self._write(_osc72("t=E:y=-1"))
+        self._write(_osc72("t=o:x=2"))
+        self._write(_osc72("t=a"))
+        await super().action_quit()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
