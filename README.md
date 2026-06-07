@@ -38,5 +38,5 @@ Full docs are on the [wiki](../../wiki):
 The `docs/` folder in this repo mirrors the wiki and can be pushed to it with:
 
 ```
-git -C docs push https://github.com/NSPC911/textual-drivers.wiki.git HEAD:master
+./sync-wiki.sh
 ```
