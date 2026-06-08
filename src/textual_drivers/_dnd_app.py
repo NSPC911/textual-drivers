@@ -270,17 +270,17 @@ class DNDApp(DrivenApp):
 
     # -- User-facing stubs -----------------------------------------------------
 
-    def on_drop(self, event: Drop) -> None: ...
+    async def on_drop(self, event: Drop) -> None: ...
 
-    def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
+    async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
     # -- User override methods -------------------------------------------------
 
-    def dnd_drag_out_operation(self, pos: tuple[int, int]) -> DragOutOperation | None:
+    async def dnd_drag_out_operation(self, pos: tuple[int, int]) -> DragOutOperation | None:
         """Return DragOutOperation to start a drag-out, or None to cancel."""
         return None
 
-    def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
+    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
         """Return True to accept the incoming drag, False to reject."""
         return True
 
