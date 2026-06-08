@@ -45,7 +45,7 @@ class DragInApp(DNDApp):
     def on_mount(self) -> None:
         self._log("Ready — drag a file from your file manager")
 
-    def on_dnddrag_in(self, event: DNDDragIn) -> None:
+    async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         zone = self.query_one("#drop-zone", Static)
         x, y = event.pos
         if x == -1 and y == -1:
@@ -60,7 +60,7 @@ class DragInApp(DNDApp):
                 f"Operation: {event.op}  |  MIME types: {mime_str}"
             )
 
-    def on_drop(self, event: Drop) -> None:
+    async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)
         zone.remove_class("hovering")
         zone.update("[bold]Dropped![/bold]  Fetching file list…")

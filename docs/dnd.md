@@ -15,16 +15,16 @@ from textual_drivers.dnd import DNDApp, Drop, DropData, DragOutFinished
 
 ### Drag-in
 
-| Message | When | Key attributes |
-| --- | --- | --- |
-| `DNDDragIn` | A drag is hovering over the window | `pos: (col, row)`, `op: "copy"\|"move"\|"either"`, `mimes: list[str]`. `pos == (-1, -1)` when the drag leaves the window. |
-| `Drop` | The user drops content | `pos`, `op: "copy"\|"move"`, `mimes: list[str]` |
-| `DropData` | Requested MIME data has been assembled | `drop_event: Drop`, `data: list[str] \| bytes` — `list[str]` for `text/uri-list` (one URI per entry, comments stripped), `bytes` otherwise |
+| Message     | When                                   | Key attributes                                                                                                                             |
+| ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DNDDragIn` | A drag is hovering over the window     | `pos: (col, row)`, `op: "copy"\|"move"\|"either"`, `mimes: list[str]`. `pos == (-1, -1)` when the drag leaves the window.                  |
+| `Drop`      | The user drops content                 | `pos`, `op: "copy"\|"move"`, `mimes: list[str]`                                                                                            |
+| `DropData`  | Requested MIME data has been assembled | `drop_event: Drop`, `data: list[str] \| bytes` — `list[str]` for `text/uri-list` (one URI per entry, comments stripped), `bytes` otherwise |
 
 ### Drag-out
 
-| Message | When | Key attributes |
-| --- | --- | --- |
+| Message           | When                           | Key attributes    |
+| ----------------- | ------------------------------ | ----------------- |
 | `DragOutFinished` | Drag completes or is cancelled | `cancelled: bool` |
 
 ### Internal (do not handle directly)
@@ -155,7 +155,11 @@ class DragOutApp(DNDApp):
         selected = list(self.query_one("#file-list", SelectionList).selected)
         if not selected:
             return None
-        return [Path(p).as_uri() for p in selected], "copy"
+        return DragOutOperation(
+            [Path(p).as_uri() for p in selected],
+            "copy",
+            f"{len(selected)} file{'s' if len(selected) > 1 else ''}",
+        )
 
     def on_drag_out_finished(self, event: DragOutFinished) -> None:
         self.query_one("#status", Label).update("Status: idle")
@@ -170,10 +174,12 @@ DragOutApp().run()
 ## Running the bundled demos
 
 ```
-python -m textual_drivers
-```
+# test drag in
+python -m textual_drivers.demo --demo drag-in
 
-Select `kitty_drag_in` or `kitty_drag_out` from the menu.
+# test drag out
+python -m textual_drivers.demo --demo drag-out
+```
 
 ## Protocol internals
 

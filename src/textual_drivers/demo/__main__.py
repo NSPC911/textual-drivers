@@ -5,25 +5,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Textual Drivers Demo")
     parser.add_argument(
         "--demo",
-        choices=["check_image_support", "try_both", "kitty_drag_out", "kitty_drag_in"],
-        default="check_image_support",
+        choices=["check-image-support", "key-test", "kitty-drag-out", "kitty-drag-in"],
+        default="check-image-support",
         help="Choose a demo to run",
     )
     args = parser.parse_args()
 
-    if args.demo == "check_image_support":
+    if args.demo == "check-image-support":
         from .capability_check_app import CapabilityCheckApp
 
         CapabilityCheckApp().run()
-    elif args.demo == "try_both":
+    elif args.demo == "key-test":
         from .test_app import DriverTestApp
 
         DriverTestApp().run()
-    elif args.demo == "kitty_drag_out":
+    elif args.demo == "kitty-drag-out":
         from .drag_out import DragOutApp
 
         DragOutApp().run()
-    elif args.demo == "kitty_drag_in":
+    elif args.demo == "kitty-drag-in":
         from .drag_in import DragInApp
 
         DragInApp().run()

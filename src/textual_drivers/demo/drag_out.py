@@ -64,7 +64,7 @@ class DragOutApp(DNDApp):
             label = f"[blue]{entry.name}/[/blue]" if entry.is_dir() else entry.name
             file_list.add_option(Selection(label, str(entry), initial_state=False))
 
-    def dnd_drag_out_operation(
+    async def dnd_drag_out_operation(
         self, pos: tuple[int, int]
     ) -> DragOutOperation | None:
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
@@ -79,7 +79,7 @@ class DragOutApp(DNDApp):
         text = f"{n} file{'s' if n != 1 else ''}"
         return DragOutOperation(uris, "copy", text)
 
-    def on_drag_out_finished(self, event: DragOutFinished) -> None:
+    async def on_drag_out_finished(self, event: DragOutFinished) -> None:
         self.query_one("#status", Label).update("Status: idle")
         self._log("Drag cancelled" if event.cancelled else "Drag finished")
 
