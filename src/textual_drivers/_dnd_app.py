@@ -150,7 +150,15 @@ class DNDApp(DrivenApp):
     """
 
     def on_mount(self) -> None:
+        self._drag_active: bool = False
+        self._drag_uris: list[str] = []
+        self._drag_op: Literal["copy", "move"] = "copy"
+        self._current_drop: Drop | None = None
+        self._data_buf: bytes = b""
+        self._data_mime_idx: int = 0
         driver = self._driver
+        if not hasattr(driver, "register_event_handler"):
+            return
         driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=m:", end=_ST), safe(DNDDragIn)
         )
@@ -166,12 +174,6 @@ class DNDApp(DrivenApp):
         driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=e:", end=_ST), self._handle_drag_progress
         )
-        self._drag_active: bool = False
-        self._drag_uris: list[str] = []
-        self._drag_op: Literal["copy", "move"] = "copy"
-        self._current_drop: Drop | None = None
-        self._data_buf: bytes = b""
-        self._data_mime_idx: int = 0
         self._write(_osc72("t=o:x=1"))
         self._write(_osc72("t=a", "*/*"))
 
