@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import re
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from textual.message import Message
 
@@ -126,6 +126,19 @@ class DragOutFinished(Message):
         self.cancelled = cancelled
 
 
+# -- Return Types --------------------------------------------------------------
+
+
+class DragOutOperation(NamedTuple):
+    uris: list[str]
+    """URIs to offer for dragging out. Must be file://"""
+    op: Literal["copy", "move"]
+    popup_text: str
+    """Text to show in the drag icon popup. Should be short and descriptive."""
+    popup_size: int = 3
+    """Size of the popup text. The popup text's size is inversely proportional to this value."""
+
+
 # -- App -----------------------------------------------------------------------
 
 
@@ -180,19 +193,21 @@ class DNDApp(DrivenApp):
         if result is None:
             self._write(_osc72("t=E:y=-1"))
             return
-        uris, op = result
-        self._drag_uris = uris
-        self._drag_op = op
+        self._drag_uris = result.uris
+        self._drag_op = result.op
         self._drag_active = True
-        op_int = 1 if op == "copy" else 2
+        op_int = 1 if result.op == "copy" else 2
         self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
-        uri_list = "\r\n".join(uris) + "\r\n"
+        uri_list = "\r\n".join(result.uris) + "\r\n"
         self._write(_osc72("t=p:x=0", b64encode(uri_list)))
-        plain = "\n".join(u.removeprefix("file://") for u in uris) + "\n"
+        plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
         self._write(_osc72("t=p:x=1", b64encode(plain)))
-        n = len(uris)
-        icon = f"{n} file{'s' if n != 1 else ''}"
-        self._write(_osc72(f"t=p:x=-1:y=0:X={len(icon)}:Y=1:o=0", b64encode(icon)))
+        self._write(
+            _osc72(
+                f"t=p:x=-1:y=0:X={len(result.popup_text)}:Y={result.popup_size}:o=0",
+                b64encode(result.popup_text),
+            )
+        )
         self._write(_osc72("t=P:x=-1"))
 
     def on_dnddrop_data(self, event: DNDDropData) -> None:
@@ -234,7 +249,9 @@ class DNDApp(DrivenApp):
 
     def _send_drag_data(self, idx: int) -> None:
         if idx == 0:
-            self._write(_osc72("t=e:y=0:m=0", b64encode("\r\n".join(self._drag_uris) + "\r\n")))
+            self._write(
+                _osc72("t=e:y=0:m=0", b64encode("\r\n".join(self._drag_uris) + "\r\n"))
+            )
         elif idx == 1:
             plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
             self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
@@ -247,10 +264,8 @@ class DNDApp(DrivenApp):
 
     # -- User override methods -------------------------------------------------
 
-    def dnd_drag_out_operation(
-        self, pos: tuple[int, int]
-    ) -> tuple[list[str], Literal["copy", "move"]] | None:
-        """Return (uris, op) to start a drag-out, or None to cancel."""
+    def dnd_drag_out_operation(self, pos: tuple[int, int]) -> DragOutOperation | None:
+        """Return DragOutOperation to start a drag-out, or None to cancel."""
         return None
 
     def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:

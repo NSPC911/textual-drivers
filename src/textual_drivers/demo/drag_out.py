@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
-from textual_drivers.dnd import DNDApp, DragOutFinished
+from textual_drivers.dnd import DNDApp, DragOutFinished, DragOutOperation
 
 
 class DragOutApp(DNDApp):
@@ -67,7 +66,7 @@ class DragOutApp(DNDApp):
 
     def dnd_drag_out_operation(
         self, pos: tuple[int, int]
-    ) -> tuple[list[str], Literal["copy", "move"]] | None:
+    ) -> DragOutOperation | None:
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
         if not selected:
             self._log("No files selected — cancelling drag")
@@ -76,7 +75,9 @@ class DragOutApp(DNDApp):
         names = ", ".join(Path(p).name for p in selected)
         self._log(f"Dragging {len(uris)} item(s): {names}")
         self.query_one("#status", Label).update(f"Status: dragging {len(uris)} item(s)")
-        return uris, "copy"
+        n = len(uris)
+        text = f"{n} file{'s' if n != 1 else ''}"
+        return DragOutOperation(uris, "copy", text)
 
     def on_drag_out_finished(self, event: DragOutFinished) -> None:
         self.query_one("#status", Label).update("Status: idle")

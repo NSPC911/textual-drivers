@@ -37,7 +37,7 @@ from textual_drivers.dnd import DNDApp, Drop, DropData, DragOutFinished
 class DNDApp(DrivenApp):
     def dnd_drag_out_operation(
         self, pos: tuple[int, int]
-    ) -> tuple[list[str], Literal["copy", "move"]] | None:
+    ) -> DragOutOperation | None:
         """Return (uris, op) to start a drag-out, or None to cancel."""
         ...
 
@@ -130,7 +130,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 
-from textual_drivers.dnd import DNDApp, DragOutFinished
+from textual_drivers.dnd import DNDApp, DragOutFinished, DragOutOperation
 
 
 class DragOutApp(DNDApp):
@@ -151,7 +151,7 @@ class DragOutApp(DNDApp):
 
     def dnd_drag_out_operation(
         self, pos: tuple[int, int]
-    ) -> tuple[list[str], Literal["copy", "move"]] | None:
+    ) -> DragOutOperation | None:
         selected = list(self.query_one("#file-list", SelectionList).selected)
         if not selected:
             return None

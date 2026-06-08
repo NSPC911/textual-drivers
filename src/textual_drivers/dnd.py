@@ -6,6 +6,7 @@ from textual_drivers._dnd_app import (
     DNDDropData,
     DragOut,
     DragOutFinished,
+    DragOutOperation,
     Drop,
     DropData,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "DNDDropData",
     "DragOut",
     "DragOutFinished",
+    "DragOutOperation",
     "Drop",
     "DropData",
 ]
