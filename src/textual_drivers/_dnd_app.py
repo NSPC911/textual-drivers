@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from inspect import isawaitable
 import re
 from typing import Literal, NamedTuple
 
@@ -179,19 +180,28 @@ class DNDApp(DrivenApp):
 
     # -- Internal handlers -----------------------------------------------------
 
-    def on_dnddrag_in(self, event: DNDDragIn) -> None:
+    async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
             self._write(_osc72("t=m:o=0"))
             return
-        if not self.dnd_drag_in_operation(event):
+        returned = self.dnd_drag_in_operation(event)
+        if isawaitable(returned):
+            accepted = await returned
+        else:
+            accepted = returned
+        if not accepted:
             self._write(_osc72("t=m:o=0"))
             return
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
-    def on_drag_out(self, event: DragOut) -> None:
-        result = self.dnd_drag_out_operation(event.pos)
+    async def on_drag_out(self, event: DragOut) -> None:
+        returned = self.dnd_drag_out_operation(event.pos)
+        if isawaitable(returned):
+            result = await returned
+        else:
+            result = returned
         if result is None:
             self._write(_osc72("t=E:y=-1"))
             return
