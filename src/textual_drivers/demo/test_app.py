@@ -118,9 +118,9 @@ class DriverTestApp(DrivenApp):
         log = self.query_one("#handler-log", Log)
         log.write_line("registered r'[^\\x1b]'      → SingleCharInput")
         log.write_line("registered r'\\x1b[^\\x1b]+' → EscapeSeqInput")
-        log.write_line("─" * 40)
+        log.write_line("-" * 40)
 
-    # ── lock_stdin panel ─────────────────────────────────────────────────────
+    # -- lock_stdin panel -----------------------------------------------------
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "lock-btn":
@@ -155,7 +155,7 @@ class DriverTestApp(DrivenApp):
     def on_key(self, event: events.Key) -> None:
         self.query_one("#key-log", Log).write_line(f"[{_ts()}] key={event.key!r}")
 
-    # ── register_event_handler panel ─────────────────────────────────────────
+    # -- register_event_handler panel -----------------------------------------
 
     def on_single_char_input(self, event: SingleCharInput) -> None:
         self._single_count += 1

@@ -140,7 +140,7 @@ class CapabilityCheckApp(DrivenApp):
             event.button.disabled = True
             self.run_worker(self._check_kitty, thread=True)
 
-    # ── sixel ────────────────────────────────────────────────────────────────
+    # -- sixel ----------------------------------------------------------------
 
     def _check_sixel(self) -> None:
         """Worker: send DA1 query and parse the response for sixel support (param 4)."""
@@ -172,7 +172,7 @@ class CapabilityCheckApp(DrivenApp):
 
         self.call_from_thread(self._enable_btn, "sixel-btn")
 
-    # ── kitty ────────────────────────────────────────────────────────────────
+    # -- kitty ----------------------------------------------------------------
 
     def _check_kitty(self) -> None:
         """Worker: send a Kitty graphics query and check for an OK response."""
@@ -202,7 +202,7 @@ class CapabilityCheckApp(DrivenApp):
 
         self.call_from_thread(self._enable_btn, "kitty-btn")
 
-    # ── thread-safe UI helpers ───────────────────────────────────────────────
+    # -- thread-safe UI helpers -----------------------------------------------
 
     def _tlog(self, panel: str, msg: str) -> None:
         """Write a log line to the named panel's Log (safe to call from any thread)."""

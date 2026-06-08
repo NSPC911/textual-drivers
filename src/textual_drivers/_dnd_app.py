@@ -21,7 +21,7 @@ def _osc72(meta: str, payload: str = "") -> str:
     return f"{_OSC}72;{meta}{_ST}"
 
 
-# ── Internal messages ─────────────────────────────────────────────────────────
+# -- Internal messages ---------------------------------------------------------
 
 
 class DNDDragIn(Message):
@@ -80,7 +80,7 @@ class DNDDropData(Message):
         self.chunk: bytes = base64.b64decode(b64.encode())
 
 
-# ── User-facing messages ──────────────────────────────────────────────────────
+# -- User-facing messages ------------------------------------------------------
 
 
 class Drop(Message):
@@ -126,7 +126,7 @@ class DragOutFinished(Message):
         self.cancelled = cancelled
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
+# -- App -----------------------------------------------------------------------
 
 
 class DNDApp(DrivenApp):
@@ -138,19 +138,19 @@ class DNDApp(DrivenApp):
 
     def on_mount(self) -> None:
         driver = self._driver
-        driver.register_event_handler(  # type: ignore[union-attr]
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=m:", end=_ST), safe(DNDDragIn)
         )
-        driver.register_event_handler(  # type: ignore[union-attr]
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=o:", end=_ST), safe(DragOut)
         )
-        driver.register_event_handler(  # type: ignore[union-attr]
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=M:", end=_ST), safe(Drop)
         )
-        driver.register_event_handler(  # type: ignore[union-attr]
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=r:", end=_ST), safe(DNDDropData)
         )
-        driver.register_event_handler(  # type: ignore[union-attr]
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=e:", end=_ST), self._handle_drag_progress
         )
         self._drag_active: bool = False
@@ -162,7 +162,7 @@ class DNDApp(DrivenApp):
         self._write(_osc72("t=o:x=1"))
         self._write(_osc72("t=a", "*/*"))
 
-    # ── Internal handlers ─────────────────────────────────────────────────────
+    # -- Internal handlers -----------------------------------------------------
 
     def on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
@@ -239,13 +239,13 @@ class DNDApp(DrivenApp):
             plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
             self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
 
-    # ── User-facing stubs ─────────────────────────────────────────────────────
+    # -- User-facing stubs -----------------------------------------------------
 
     def on_drop(self, event: Drop) -> None: ...
 
     def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
-    # ── User override methods ─────────────────────────────────────────────────
+    # -- User override methods -------------------------------------------------
 
     def dnd_drag_out_operation(
         self, pos: tuple[int, int]
@@ -271,8 +271,8 @@ class DNDApp(DrivenApp):
         self._write(_osc72("t=a"))
         await super().action_quit()
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # -- Helpers ---------------------------------------------------------------
 
     def _write(self, seq: str) -> None:
-        self._driver.write(seq)  # type: ignore[union-attr]
-        self._driver.flush()  # type: ignore[union-attr]
+        self._driver.write(seq)
+        self._driver.flush()
