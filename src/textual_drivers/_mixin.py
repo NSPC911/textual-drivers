@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, TypeAlias
 
 from textual.message import Message
+from textual.signal import Signal
 
 # Every terminal event mode Textual enables on start-up that can be toggled:
 #   mouse (1000/1002/1003/1006), focus tracking (1004),
@@ -25,12 +26,6 @@ _EVENTS_DISABLE = (
 _EVENTS_ENABLE = (
     "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?1004h\x1b[>1u\x1b[?2004h"
 )
-
-
-class RawData(Message):
-    def __init__(self, data: str) -> None:
-        super().__init__()
-        self.data = data
 
 
 class LockStdinMixin:
@@ -159,7 +154,7 @@ class EventHandlerMixin:
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._event_handlers: list[tuple[Pattern, Callable[[str], object], bool]] = []
-        self.receive_raw_data: bool = False
+        self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
 
     def register_event_handler(
         self,
@@ -200,10 +195,7 @@ class EventHandlerMixin:
             The filtered data string with all priority-matched sequences removed.
         """
 
-        if self.receive_raw_data:
-            any_event = RawData(data)
-            any_event.set_sender(self._app)  # type: ignore[attr-defined]
-            self.send_message(any_event)  # type: ignore[attr-defined]
+        self.raw_data_signal.publish(data)
 
         to_strip: list[str] = []
         for pattern, constructor, priority in self._event_handlers:
