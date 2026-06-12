@@ -112,3 +112,21 @@ Textual derives the handler name from the message class name using `snake_case`:
 | `BoundedPattern` match → `MyMsg` | `on_my_msg` |
 
 Handler methods on the app (or any widget) are called automatically when the message is posted.
+
+## raw_data_signal
+
+`driver.raw_data_signal` is a `Signal[str]` that fires once for every raw stdin read chunk, **before** any pattern matching or filtering. It is the lowest-level observation point available — the string is exactly what came off the file descriptor, decoded from UTF-8 but otherwise unprocessed.
+
+Subscribe in `on_mount` using Textual's signal API:
+
+```python
+def on_mount(self) -> None:
+    self.app._driver.raw_data_signal.subscribe(self, self._on_raw_stdin)
+
+def _on_raw_stdin(self, data: str) -> None:
+    self.query_one("#log", Log).write_line(f"raw: {data!r}")
+```
+
+`subscribe(node, callback)` ties the subscription lifetime to `node` — the callback is automatically removed when the node is unmounted. Pass `immediate=True` to invoke the callback on the stdin thread itself rather than queuing it through Textual's message loop (useful when ordering relative to other events matters, but be careful with thread safety).
+
+`raw_data_signal` fires for **all** stdin data, including mouse motion and key events. Filter aggressively in the callback if it is performance-sensitive.
