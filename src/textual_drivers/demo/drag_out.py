@@ -14,7 +14,7 @@ from textual_drivers.dnd import DNDApp, DragOutFinished, DragOutOperation
 
 class DragOutApp(DNDApp):
     TITLE = "kitty drag-out demo"
-    BINDINGS = [Binding("ctrl+c", "quit", "Quit")]
+    BINDINGS = [Binding("e", "quit", "Quit")]
 
     CSS = """
     Screen { layout: vertical; }
@@ -67,6 +67,8 @@ class DragOutApp(DNDApp):
     async def dnd_drag_out_operation(
         self, pos: tuple[int, int]
     ) -> DragOutOperation | None:
+        if pos not in self.query_one("#file-list", SelectionList).content_region:
+            return
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
         if not selected:
             self._log("No files selected — cancelling drag")

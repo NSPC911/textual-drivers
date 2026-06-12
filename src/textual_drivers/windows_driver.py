@@ -17,8 +17,9 @@ from textual.drivers.win32 import (
     wait_for_handles,
 )
 from textual.drivers.windows_driver import WindowsDriver
-from textual.events import Event, Resize
+from textual.events import Resize
 from textual.geometry import Size
+from textual.message import Message
 
 from textual_drivers._mixin import CustomDriverMixin
 
@@ -37,8 +38,8 @@ class _CustomEventMonitor(win32.EventMonitor):
         loop: AbstractEventLoop,
         app: App,
         exit_event: threading.Event,
-        process_event: Callable[[Event], None],
-        dispatch_handlers: Callable[[str], None],
+        process_event: Callable[[Message], None],
+        dispatch_handlers: Callable[[str], str],
         pause_point: Callable[[], None],
     ) -> None:
         super().__init__(loop, app, exit_event, process_event)
@@ -98,8 +99,8 @@ class _CustomEventMonitor(win32.EventMonitor):
                     key_string = (
                         "".join(keys).encode("utf-16", "surrogatepass").decode("utf-16")
                     )
-                    self._dispatch_handlers(key_string)
-                    for event in parser.feed(key_string):
+                    filtered = self._dispatch_handlers(key_string)
+                    for event in parser.feed(filtered) if filtered else []:
                         self.process_event(event)
 
                 if new_size is not None:
@@ -130,7 +131,7 @@ class CustomWindowsDriver(CustomDriverMixin, WindowsDriver):
 
         from textual.drivers._writer_thread import WriterThread
 
-        self._writer_thread = WriterThread(self._file)
+        self._writer_thread = WriterThread(self._file)  # ty: ignore  # shouldn't matter I hope
         self._writer_thread.start()
 
         self.write("\x1b[?1049h")

@@ -40,8 +40,8 @@ class CustomLinuxInlineDriver(CustomDriverMixin, LinuxInlineDriver):
                     unicode_data = decode(read(fileno, 1024 * 4), final=final and last)
                     if not unicode_data:
                         break
-                    self._dispatch_custom_handlers(unicode_data)
-                    for event in feed(unicode_data):
+                    filtered = self._dispatch_custom_handlers(unicode_data)
+                    for event in feed(filtered) if filtered else []:
                         if isinstance(event, events.CursorPosition):
                             self.cursor_origin = (event.x, event.y)
                         else:

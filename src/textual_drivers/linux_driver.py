@@ -39,8 +39,8 @@ class CustomLinuxDriver(CustomDriverMixin, LinuxDriver):
                     unicode_data = decode(read(fileno, 1024 * 4), final=final and last)
                     if not unicode_data:
                         break
-                    self._dispatch_custom_handlers(unicode_data)
-                    for event in feed(unicode_data):
+                    filtered = self._dispatch_custom_handlers(unicode_data)
+                    for event in feed(filtered) if filtered else []:
                         self.process_message(event)
             for event in tick():
                 self.process_message(event)
