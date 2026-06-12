@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import base64
-from inspect import isawaitable
 import re
+from inspect import isawaitable
 from typing import Literal, NamedTuple
 
+from textual import events, on
 from textual.message import Message
 
 from textual_drivers import BoundedPattern, DrivenApp
@@ -161,19 +162,34 @@ class DNDApp(DrivenApp):
         if not hasattr(driver, "register_event_handler"):
             return
         driver.register_event_handler(
-            BoundedPattern(start="\x1b]72;t=m:", end=_ST), safe(DNDDragIn)
+            BoundedPattern(start="\x1b]72;t=m:", end=_ST),
+            safe(DNDDragIn),
+            priority=True,
         )
         driver.register_event_handler(
-            BoundedPattern(start="\x1b]72;t=o:", end=_ST), safe(DragOut)
+            BoundedPattern(start="\x1b]72;t=o:", end=_ST),
+            safe(DragOut),
+            priority=True,
         )
         driver.register_event_handler(
-            BoundedPattern(start="\x1b]72;t=M:", end=_ST), safe(Drop)
+            BoundedPattern(start="\x1b]72;t=M:", end=_ST),
+            safe(Drop),
+            priority=True,
         )
         driver.register_event_handler(
-            BoundedPattern(start="\x1b]72;t=r:", end=_ST), safe(DNDDropData)
+            BoundedPattern(start="\x1b]72;t=r:", end=_ST),
+            safe(DNDDropData),
+            priority=True,
         )
         driver.register_event_handler(
-            BoundedPattern(start="\x1b]72;t=e:", end=_ST), self._handle_drag_progress
+            BoundedPattern(start="\x1b]72;t=e:", end=_ST),
+            self._handle_drag_progress,
+            priority=True,
+        )
+        driver.register_event_handler(
+            BoundedPattern(start="\x1b]72;t=E:", end=_ST),
+            lambda _: None,
+            priority=True,
         )
         self._write(_osc72("t=o:x=1"))
         self._write(_osc72("t=a", "*/*"))
@@ -251,9 +267,12 @@ class DNDApp(DrivenApp):
             return
         code = int(m.group("code"))
         if code == 4:
+            was_active = self._drag_active
             self._drag_active = False
             self._drag_uris = []
-            self.post_message(DragOutFinished(cancelled=m.group("y") == "1"))
+            self._write(_osc72("t=o:x=1"))
+            if was_active:
+                self.post_message(DragOutFinished(cancelled=m.group("y") == "1"))
         elif code == 5:
             y = m.group("y")
             if y is not None:
@@ -270,18 +289,27 @@ class DNDApp(DrivenApp):
 
     # -- User-facing stubs -----------------------------------------------------
 
-    async def on_drop(self, event: Drop) -> None: ...
+    async def on_drop(self, event: Drop) -> None:
+        if self._drag_active:
+            # Self-drop: drag-out item dropped back into our own terminal.
+            # Reset drag state and re-register so the next drag-out works.
+            self._drag_active = False
+            self._drag_uris = []
+            self._write(_osc72("t=o:x=1"))
+            self.post_message(DragOutFinished(cancelled=True))
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
     # -- User override methods -------------------------------------------------
 
-    async def dnd_drag_out_operation(self, pos: tuple[int, int]) -> DragOutOperation | None:
-        """Return DragOutOperation to start a drag-out, or None to cancel."""
+    async def dnd_drag_out_operation(
+        self, pos: tuple[int, int]
+    ) -> DragOutOperation | None:
+        """Return DragOutOperation to start a drag-out, or None to cancel."""  # noqa: DOC201
         return None
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
-        """Return True to accept the incoming drag, False to reject."""
+        """Return True to accept the incoming drag, False to reject."""  # noqa: DOC201
         return True
 
     def request_data(self, event: Drop, index: int) -> None:
@@ -291,11 +319,16 @@ class DNDApp(DrivenApp):
         self._data_buf = b""
         self._write(_osc72(f"t=r:x={index + 1}"))
 
-    async def action_quit(self) -> None:
+    @on(events.Unmount)
+    @on(events.Hide)
+    async def stop_kitty(self) -> None:
         if self._drag_active:
             self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
         self._write(_osc72("t=a"))
+
+    async def action_quit(self) -> None:
+        await self.stop_kitty()
         await super().action_quit()
 
     # -- Helpers ---------------------------------------------------------------

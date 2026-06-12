@@ -1,8 +1,23 @@
 # register_event_handler
 
-`register_event_handler(pattern, event_constructor)` binds a pattern against each raw decoded stdin chunk. When the pattern matches, `event_constructor(data)` is called with the matched string. If the result is a `textual.message.Message` instance it is posted to the app.
+`register_event_handler(pattern, event_constructor, *, priority=False)` binds a pattern against each raw decoded stdin chunk. When the pattern matches, `event_constructor(data)` is called with the matched string. If the result is a `textual.message.Message` instance it is posted to the app.
 
 Normal Textual parsing continues regardless — the custom event fires **in addition** to any built-in events Textual would normally raise.
+
+## priority
+
+Pass `priority=True` to claim exclusive ownership of the matched sequences. Matched data is stripped from the raw input before it is fed to Textual's internal XTermParser and to any non-priority handlers, preventing double-dispatch.
+
+```python
+# The OSC 72 sequence is consumed here and will NOT reach XTermParser.
+driver.register_event_handler(
+    BoundedPattern(start="\x1b]72;t=e:", end=_ST),
+    handle_drag_progress,
+    priority=True,
+)
+```
+
+Use `priority=True` whenever the sequence would otherwise be misinterpreted by Textual's key parser (e.g. OSC payload text leaking as key events).
 
 ## Pattern types
 
@@ -53,9 +68,11 @@ _OSC = "\x1b]"
 _ST  = "\x1b\\"
 
 # Fires for every  ESC ] 72 ; t=o: … ESC \  sequence in the incoming data.
+# priority=True strips the sequence so XTermParser never sees it.
 driver.register_event_handler(
     BoundedPattern(start=f"{_OSC}72;t=o:", end=_ST),
     DragGestureMsg,
+    priority=True,
 )
 ```
 

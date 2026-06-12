@@ -19,18 +19,18 @@ _EVENTS_DISABLE = (
     "\x1b[?1000l"  # mouse: button off
     "\x1b[?1006l"  # mouse: SGR extension off
     "\x1b[?1004l"  # focus tracking off
-    "\x1b[>0u"     # kitty key protocol: reset to legacy encoding
+    "\x1b[>0u"  # kitty key protocol: reset to legacy encoding
     "\x1b[?2004l"  # bracketed paste off
 )
 _EVENTS_ENABLE = (
-    "\x1b[?1000h"
-    "\x1b[?1002h"
-    "\x1b[?1003h"
-    "\x1b[?1006h"
-    "\x1b[?1004h"
-    "\x1b[>1u"
-    "\x1b[?2004h"
+    "\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?1004h\x1b[>1u\x1b[?2004h"
 )
+
+
+class RawData(Message):
+    def __init__(self, data: str) -> None:
+        super().__init__()
+        self.data = data
 
 
 class LockStdinMixin:
@@ -132,7 +132,7 @@ Pattern: TypeAlias = str | BoundedPattern | re.Pattern[str]
 
 
 def _find_bounded(data: str, start: str, end: str) -> list[str]:
-    """Return all non-overlapping substrings of *data* delimited by *start*…*end*."""
+    """Return all non-overlapping substrings of *data* delimited by *start*…*end*."""  # noqa: DOC201
     results: list[str] = []
     pos = 0
     while True:
@@ -158,10 +158,15 @@ class EventHandlerMixin:
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._event_handlers: list[tuple[Pattern, Callable[[str], object]]] = []
+        self._event_handlers: list[tuple[Pattern, Callable[[str], object], bool]] = []
+        self.receive_raw_data: bool = False
 
     def register_event_handler(
-        self, pattern: Pattern, event_constructor: Callable[[str], Message | Any]
+        self,
+        pattern: Pattern,
+        event_constructor: Callable[[str], Message | Any],
+        *,
+        priority: bool = False,
     ) -> None:
         """Register a handler fired when raw stdin input matches *pattern*.
 
@@ -173,30 +178,60 @@ class EventHandlerMixin:
                 ``re.Pattern``: fires for every match of ``pattern.finditer(data)``.
             event_constructor: Called with the matched data string; if the
                 result is a Message instance it is posted to the app.
+            priority: If True, matched sequences are stripped from the data fed
+                to XTermParser and to non-priority handlers, preventing
+                double-dispatch.
         """
-        self._event_handlers.append((pattern, event_constructor))
+        self._event_handlers.append((pattern, event_constructor, priority))
 
-    def _dispatch_custom_handlers(self, data: str) -> None:
-        for pattern, constructor in self._event_handlers:
+    def _dispatch_custom_handlers(self, data: str) -> str:
+        """Dispatch registered handlers and return filtered data.
+
+        Priority handlers claim exclusive ownership of their matched sequences;
+        those sequences are stripped before being fed to XTermParser and
+        non-priority handlers.
+
+        Args:
+            data: A decoded chunk of stdin data to match against registered
+                patterns.  This is typically the raw input from the terminal,
+                before any parsing or tokenisation.
+
+        Returns:
+            The filtered data string with all priority-matched sequences removed.
+        """
+
+        if self.receive_raw_data:
+            any_event = RawData(data)
+            any_event.set_sender(self._app)  # type: ignore[attr-defined]
+            self.send_message(any_event)  # type: ignore[attr-defined]
+
+        to_strip: list[str] = []
+        for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
                 chunks = _find_bounded(data, pattern.start, pattern.end)
             elif isinstance(pattern, re.Pattern):
                 chunks = [m.group() for m in pattern.finditer(data)]
             else:
                 # str glob: split on ESC so each escape sequence is checked individually
-                chunks = []
-                for part in data.split("\x1b"):
-                    if not part:
-                        continue
-                    chunks.append("\x1b" + part)
+                chunks = [
+                    "\x1b[" + part
+                    for part in data.split("\x1b[")
+                    if part and fnmatch.fnmatch("\x1b[" + part, pattern)
+                ]
+
+            if priority:
+                to_strip.extend(chunks)
 
             for chunk in chunks:
-                if isinstance(pattern, str) and not fnmatch.fnmatch(chunk, pattern):
-                    continue
                 event = constructor(chunk)
                 if isinstance(event, Message):
                     event.set_sender(self._app)  # type: ignore[attr-defined]
                     self.send_message(event)  # type: ignore[attr-defined]
+
+        filtered = data
+        for chunk in to_strip:
+            filtered = filtered.replace(chunk, "", 1)
+        return filtered
 
 
 class CustomDriverMixin(LockStdinMixin, EventHandlerMixin):
