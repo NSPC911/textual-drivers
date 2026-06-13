@@ -63,6 +63,9 @@ class DragOut(Message):
             raise ValueError(f"Invalid t=o gesture: {data!r}")
         self.pos: tuple[int, int] = (int(m.group("x")), int(m.group("y")))
 
+    def __repr__(self) -> str:
+        return f"DragOut(pos={self.pos})"
+
 
 class DNDDropData(Message):
     """One t=r data chunk from kitty. Internal — accumulated by on_dnddrop_data."""
@@ -81,6 +84,8 @@ class DNDDropData(Message):
         b64 += "=" * (-len(b64) % 4)
         self.chunk: bytes = base64.b64decode(b64.encode())
 
+    def __repr__(self) -> str:
+        return f"DNDDropData(idx={self.idx}, more={self.more}, chunk_len={len(self.chunk)})"
 
 # -- User-facing messages ------------------------------------------------------
 
@@ -106,6 +111,9 @@ class Drop(Message):
         self.op: Literal["copy", "move"] = "copy" if o == 1 else "move"
         self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
 
+    def __repr__(self) -> str:
+        return f"Drop(pos={self.pos}, op={self.op}, mimes={self.mimes})"
+
 
 class DropData(Message):
     """Posted once all requested MIME data has been received and assembled.
@@ -119,6 +127,11 @@ class DropData(Message):
         self.drop_event = drop_event
         self.data = data
 
+    def __repr__(self) -> str:
+        data_repr = (
+            f"{len(self.data)} bytes" if isinstance(self.data, bytes) else repr(self.data)
+        )
+        return f"DropData(drop_event={self.drop_event}, data={data_repr})"
 
 class DragOutFinished(Message):
     """Posted when a drag-out operation fully completes or is cancelled."""
