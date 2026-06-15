@@ -8,6 +8,7 @@ from inspect import isawaitable
 from typing import Literal, NamedTuple
 
 from textual import events, on
+from textual.geometry import Offset
 from textual.message import Message
 from textual.reactive import var
 
@@ -43,7 +44,7 @@ class DNDDragIn(Message):
         )
         if not m:
             raise ValueError(f"Invalid t=m: {data!r}")
-        self.pos: tuple[int, int] = (int(m.group("x")), int(m.group("y")))
+        self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
         o = int(m.group("o")) if m.group("o") else 0
         self.op: Literal["copy", "move", "either"] = (
             "copy" if o == 1 else "move" if o == 2 else "either"
@@ -51,7 +52,7 @@ class DNDDragIn(Message):
         self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
 
 
-class DragOut(Message):
+class DNDDragOut(Message):
     """Kitty reports the user started a drag-out gesture.
 
     Handler: on_drag_out (DNDApp internal — calls dnd_drag_out_operation).
@@ -62,10 +63,10 @@ class DragOut(Message):
         m = re.search(r"t=o:x=(?P<x>-?\d+):y=(?P<y>-?\d+)", data)
         if not m:
             raise ValueError(f"Invalid t=o gesture: {data!r}")
-        self.pos: tuple[int, int] = (int(m.group("x")), int(m.group("y")))
+        self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
 
     def __repr__(self) -> str:
-        return f"DragOut(pos={self.pos})"
+        return f"DNDDragOut(pos={self.pos})"
 
 
 class DNDDropData(Message):
@@ -88,6 +89,7 @@ class DNDDropData(Message):
     def __repr__(self) -> str:
         return f"DNDDropData(idx={self.idx}, more={self.more}, chunk_len={len(self.chunk)})"
 
+
 # -- User-facing messages ------------------------------------------------------
 
 
@@ -95,7 +97,7 @@ class Drop(Message):
     """Posted when the user drops content onto the terminal window.
 
     Call request_data(event, index) from on_drop to fetch the actual content.
-    index is 0-based into event.mimes. Call dnd_close() when done fetching
+    index is 0-based into event.mimes. Call close_dnd() when done fetching
     all desired MIMEs to release kitty's drop state.
     """
 
@@ -108,7 +110,7 @@ class Drop(Message):
         )
         if not m:
             raise ValueError(f"Invalid t=M: {data!r}")
-        self.pos: tuple[int, int] = (int(m.group("x")), int(m.group("y")))
+        self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
         o = int(m.group("o"))
         self.op: Literal["copy", "move"] = "copy" if o == 1 else "move"
         self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
@@ -132,7 +134,9 @@ class DropData(Message):
 
     def __repr__(self) -> str:
         data_repr = (
-            f"{len(self.data)} bytes" if isinstance(self.data, bytes) else repr(self.data)
+            f"{len(self.data)} bytes"
+            if isinstance(self.data, bytes)
+            else repr(self.data)
         )
         return f"DropData(drop_event={self.drop_event}, data={data_repr}, mime={self.mime})"
 
@@ -145,13 +149,13 @@ class DragOutFinished(Message):
         self.cancelled = cancelled
 
     def __repr__(self) -> str:
-        return f"DragOutFinished(cancelled={self.cancelled})"
+        return f"DNDDragOutFinished(cancelled={self.cancelled})"
 
 
 # -- Return Types --------------------------------------------------------------
 
 
-class DragOutOperation(NamedTuple):
+class DNDDragOutOperation(NamedTuple):
     uris: list[str]
     """URIs to offer for dragging out. Must be file://"""
     op: Literal["copy", "move"]
@@ -168,7 +172,7 @@ class DNDApp(DrivenApp):
     """DrivenApp subclass with kitty drag-in and drag-out support.
 
     Override dnd_drag_out_operation and dnd_drag_in_operation to customise
-    behaviour. Handle Drop, DropData, and DragOutFinished messages for events.
+    behaviour. Handle Drop, DropData, and DNDDragOutFinished messages for events.
     """
 
     _drag_active: var[bool] = var(False)
@@ -190,7 +194,7 @@ class DNDApp(DrivenApp):
         )
         driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=o:", end=_ST),
-            safe(DragOut),
+            safe(DNDDragOut),
             priority=True,
         )
         driver.register_event_handler(
@@ -234,7 +238,7 @@ class DNDApp(DrivenApp):
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
-    async def on_drag_out(self, event: DragOut) -> None:
+    async def on_dnddrag_out(self, event: DNDDragOut) -> None:
         returned = self.dnd_drag_out_operation(event.pos)
         if isawaitable(returned):
             result = await returned
@@ -325,10 +329,8 @@ class DNDApp(DrivenApp):
 
     # -- User override methods -------------------------------------------------
 
-    async def dnd_drag_out_operation(
-        self, pos: tuple[int, int]
-    ) -> DragOutOperation | None:
-        """Return DragOutOperation to start a drag-out, or None to cancel."""  # noqa: DOC201
+    async def dnd_drag_out_operation(self, pos: Offset) -> DNDDragOutOperation | None:
+        """Return DNDDragOutOperation to start a drag-out, or None to cancel."""  # noqa: DOC201
         return None
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
@@ -337,11 +339,11 @@ class DNDApp(DrivenApp):
 
     # -- Helpers ---------------------------------------------------------------
 
-    def request_data(self, event: Drop, index: int, close: bool = False) -> None:
+    def request_data(self, event: Drop, index: int, close: bool = True) -> None:
         """Request MIME data for a drop. index is 0-based into event.mimes.
 
         If close=True, the drop session is closed automatically once the data
-        arrives. Otherwise call dnd_close() explicitly when done.
+        arrives. Otherwise call close_dnd() explicitly when done.
         """
         self._current_drop = event
         self._data_mime_idx = index
@@ -349,7 +351,7 @@ class DNDApp(DrivenApp):
         self._close_after_data = close
         self._write(_osc72(f"t=r:x={index + 1}"))
 
-    def dnd_close(self) -> None:
+    def close_dnd(self) -> None:
         """Close the current drop session, releasing kitty's drop state."""
         self._write(_osc72("t=r:o=1"))
 

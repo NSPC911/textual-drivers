@@ -4,7 +4,7 @@ Drop-in subclasses of Textual's built-in terminal drivers with two extra capabil
 
 | Capability | Summary |
 | --- | --- |
-| [`lock_stdin`](lock-stdin) | Pause the driver's stdin thread and silence terminal events — lets you run terminal queries or subprocesses without interference |
+| [`lock_stdin`](lock-stdin) | Pause the driver's stdin thread and silence terminal events, letting you run terminal queries or subprocesses without interference |
 | [`register_event_handler`](register-event-handler) | Bind a pattern against raw stdin; when it matches, a `Message` is posted into Textual's event system |
 
 A higher-level [`DNDApp`](dnd) base class builds on these to implement the full kitty drag-and-drop protocol (drag-in and drag-out).
@@ -40,7 +40,7 @@ MyApp().run()
 
 ## Pages
 
-- [Drivers](drivers) — driver classes, `DrivenApp`, and using the mixin in your own driver
-- [lock-stdin](lock-stdin) — exclusive stdin ownership for terminal queries and subprocesses
-- [register-event-handler](register-event-handler) — pattern-based raw stdin → Textual message routing
-- [DnD](dnd) — kitty drag-and-drop protocol via `DNDApp`
+- [Drivers](drivers): driver classes, `DrivenApp`, and using the mixin in your own driver
+- [lock-stdin](lock-stdin): exclusive stdin ownership for terminal queries and subprocesses
+- [register-event-handler](register-event-handler): pattern-based raw stdin → Textual message routing
+- [DnD](dnd): kitty drag-and-drop protocol via `DNDApp`

@@ -2,12 +2,12 @@
 
 ## Available driver classes
 
-| Class | Replaces |
-| --- | --- |
-| `textual_drivers.linux_driver.CustomLinuxDriver` | `textual.drivers.linux_driver.LinuxDriver` |
+| Class                                                         | Replaces                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------- |
+| `textual_drivers.linux_driver.CustomLinuxDriver`              | `textual.drivers.linux_driver.LinuxDriver`              |
 | `textual_drivers.linux_inline_driver.CustomLinuxInlineDriver` | `textual.drivers.linux_inline_driver.LinuxInlineDriver` |
-| `textual_drivers.windows_driver.CustomWindowsDriver` | `textual.drivers.windows_driver.WindowsDriver` |
-| `textual_drivers.headless_driver.CustomHeadlessDriver` | `textual.drivers.headless_driver.HeadlessDriver` |
+| `textual_drivers.windows_driver.CustomWindowsDriver`          | `textual.drivers.windows_driver.WindowsDriver`          |
+| `textual_drivers.headless_driver.CustomHeadlessDriver`        | `textual.drivers.headless_driver.HeadlessDriver`        |
 
 ## DrivenApp
 
@@ -59,6 +59,8 @@ class MyDriver(CustomDriverMixin, LinuxDriver):
 ```
 
 The mixin must appear before the driver class in the MRO so that `__init__` chains correctly via `super()`. You must also call `self._stdin_pause_point()` at the start of your input-thread loop for [`lock_stdin`](lock-stdin) to work.
+
+Feel free to contribute extra mixins for other features.
 
 ## Headless mode
 

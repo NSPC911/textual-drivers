@@ -73,6 +73,7 @@ class DragInApp(DNDApp):
         self._log(f"Drop at {event.pos} op={event.op}")
         self._requested_mimes = []
         from .helpers import NarrowOptionsWithInput
+
         reqmime = await self.push_screen_wait(
             NarrowOptionsWithInput(event.mimes, "", "Choose a MIME type to request:")
         )
@@ -94,6 +95,7 @@ class DragInApp(DNDApp):
                 self._log(f"  {uri}")
 
         from .helpers import NarrowOptionsWithInput
+
         all_mimes = event.drop_event.mimes
         remaining = [m for m in all_mimes if m not in self._requested_mimes]
         if not remaining:
@@ -101,7 +103,9 @@ class DragInApp(DNDApp):
             self.dnd_close()
             return
         reqmime = await self.push_screen_wait(
-            NarrowOptionsWithInput(remaining, "", "Request another MIME type? (cancel to stop)")
+            NarrowOptionsWithInput(
+                remaining, "", "Request another MIME type? (cancel to stop)"
+            )
         )
         if reqmime is None:
             self._log("Done requesting MIME types.")

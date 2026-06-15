@@ -27,7 +27,10 @@ class NarrowOptionsWithInput(ModalScreen[str | None]):
     """
 
     def __init__(
-        self, options: list = [], placeholder: str = "Don't drop your jaw!", border_title: str = ""
+        self,
+        options: list = [],
+        placeholder: str = "Don't drop your jaw!",
+        border_title: str = "",
     ) -> None:
         super().__init__()
         self.border_title = border_title

@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, NamedTuple, TypeAlias
+from typing import Any, Callable, Generator, NamedTuple, Protocol, TypeAlias
 
 from textual.message import Message
 from textual.signal import Signal
@@ -107,6 +107,9 @@ class LockStdinMixin:
                 self._stdin_is_paused = False
 
 
+# ------------------------------------------------------------------------------
+
+
 class BoundedPattern(NamedTuple):
     """Match raw stdin data that contains a substring starting with *start* and ending with *end*.
 
@@ -142,6 +145,10 @@ def _find_bounded(data: str, start: str, end: str) -> list[str]:
     return results
 
 
+class MessageEvent(Protocol):
+    def __init__(self, data: str) -> None: ...
+
+
 class EventHandlerMixin:
     """Mixin that adds register_event_handler to Textual drivers.
 
@@ -159,7 +166,7 @@ class EventHandlerMixin:
     def register_event_handler(
         self,
         pattern: Pattern,
-        event_constructor: Callable[[str], Message | Any],
+        event_constructor: Callable[[str], MessageEvent | Any],
         *,
         priority: bool = False,
     ) -> None:
