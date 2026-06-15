@@ -31,6 +31,19 @@ from textual_drivers.dnd import DNDApp, Drop, DropData, DragOutFinished
 
 `DNDDragIn`, `DragOut`, `DNDDropData` are used internally by `DNDApp` and should not be handled in subclasses.
 
+## Reactive attributes
+
+| Attribute      | Type   | Description                                                                                      |
+| -------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| `_drag_active` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). Read-only from subclasses; written by `DNDApp` internally. |
+
+Because `_drag_active` is a Textual `var`, subclasses can add a watcher to react to drag state changes without polling:
+
+```python
+def watch__drag_active(self, active: bool) -> None:
+    self.query_one("#status", Label).update("Dragging…" if active else "Idle")
+```
+
 ## Override methods
 
 ```python

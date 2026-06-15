@@ -5,9 +5,7 @@ from __future__ import annotations
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import HorizontalGroup
-from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, Label, Log, Static
+from textual.widgets import Footer, Header, Label, Log, Static
 
 from textual_drivers.dnd import DNDApp, DNDDragIn, Drop, DropData
 
@@ -46,6 +44,7 @@ class DragInApp(DNDApp):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._requested_mimes: list[str] = []
         self._log("Ready — drag a file from your file manager")
 
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
@@ -72,23 +71,44 @@ class DragInApp(DNDApp):
             f"Operation: {event.op}  |  MIME types: {', '.join(event.mimes) or '?'}"
         )
         self._log(f"Drop at {event.pos} op={event.op}")
+        self._requested_mimes = []
         from .helpers import NarrowOptionsWithInput
-        reqmime = await self.push_screen_wait(NarrowOptionsWithInput(event.mimes, "", "Choose a MIME type to request:"))
+        reqmime = await self.push_screen_wait(
+            NarrowOptionsWithInput(event.mimes, "", "Choose a MIME type to request:")
+        )
         if reqmime is None:
             self._log("No MIME type chosen, ignoring drop.")
+            self.dnd_close()
             return
-        idx = event.mimes.index(reqmime)
-        self.request_data(event, idx)
+        self._requested_mimes.append(reqmime)
+        self.request_data(event, event.mimes.index(reqmime))
 
-    def on_drop_data(self, event: DropData) -> None:
+    @work
+    async def on_drop_data(self, event: DropData) -> None:
         if not isinstance(event.data, list):
             self._log(f"{event.mime}: {event.data!r}")
+        else:
+            uris: list[str] = event.data
+            self._log(f"Received {len(uris)} file(s) for {event.mime}:")
+            for uri in uris:
+                self._log(f"  {uri}")
+
+        from .helpers import NarrowOptionsWithInput
+        all_mimes = event.drop_event.mimes
+        remaining = [m for m in all_mimes if m not in self._requested_mimes]
+        if not remaining:
+            self._log("All MIME types received.")
+            self.dnd_close()
             return
-        uris: list[str] = event.data
-        n = len(uris)
-        self._log(f"Received {n} file(s):")
-        for uri in uris:
-            self._log(f"  {uri}")
+        reqmime = await self.push_screen_wait(
+            NarrowOptionsWithInput(remaining, "", "Request another MIME type? (cancel to stop)")
+        )
+        if reqmime is None:
+            self._log("Done requesting MIME types.")
+            self.dnd_close()
+            return
+        self._requested_mimes.append(reqmime)
+        self.request_data(event.drop_event, all_mimes.index(reqmime))
 
     def _log(self, msg: str) -> None:
         self.query_one("#log", Log).write_line(msg)

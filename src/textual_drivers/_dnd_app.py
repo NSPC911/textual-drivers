@@ -94,7 +94,8 @@ class Drop(Message):
     """Posted when the user drops content onto the terminal window.
 
     Call request_data(event, index) from on_drop to fetch the actual content.
-    index is 0-based into event.mimes.
+    index is 0-based into event.mimes. Call dnd_close() when done fetching
+    all desired MIMEs to release kitty's drop state.
     """
 
     def __init__(self, data: str) -> None:
@@ -176,6 +177,7 @@ class DNDApp(DrivenApp):
         self._current_drop: Drop | None = None
         self._data_buf: bytes = b""
         self._data_mime_idx: int = 0
+        self._close_after_data: bool = False
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
             return
@@ -277,7 +279,8 @@ class DNDApp(DrivenApp):
             assembled = self._data_buf
         self.post_message(DropData(self._current_drop, assembled, mime))
         self._data_buf = b""
-        self._write(_osc72("t=r:o=1"))
+        if self._close_after_data:
+            self._write(_osc72("t=r:o=1"))
 
     def _handle_drag_progress(self, data: str) -> None:
         m = re.search(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?", data)
@@ -330,12 +333,23 @@ class DNDApp(DrivenApp):
         """Return True to accept the incoming drag, False to reject."""  # noqa: DOC201
         return True
 
-    def request_data(self, event: Drop, index: int) -> None:
-        """Request MIME data for a drop. index is 0-based into event.mimes."""
+    # -- Helpers ---------------------------------------------------------------
+
+    def request_data(self, event: Drop, index: int, close: bool = False) -> None:
+        """Request MIME data for a drop. index is 0-based into event.mimes.
+
+        If close=True, the drop session is closed automatically once the data
+        arrives. Otherwise call dnd_close() explicitly when done.
+        """
         self._current_drop = event
         self._data_mime_idx = index
         self._data_buf = b""
+        self._close_after_data = close
         self._write(_osc72(f"t=r:x={index + 1}"))
+
+    def dnd_close(self) -> None:
+        """Close the current drop session, releasing kitty's drop state."""
+        self._write(_osc72("t=r:o=1"))
 
     @on(events.Unmount)
     @on(events.Hide)
@@ -348,8 +362,6 @@ class DNDApp(DrivenApp):
     async def action_quit(self) -> None:
         await self.stop_kitty()
         await super().action_quit()
-
-    # -- Helpers ---------------------------------------------------------------
 
     def _write(self, seq: str) -> None:
         self._driver.write(seq)
