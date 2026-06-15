@@ -9,6 +9,7 @@ from typing import Literal, NamedTuple
 
 from textual import events, on
 from textual.message import Message
+from textual.reactive import var
 
 from textual_drivers import BoundedPattern, DrivenApp
 from textual_drivers._utils import b64encode, safe
@@ -170,8 +171,9 @@ class DNDApp(DrivenApp):
     behaviour. Handle Drop, DropData, and DragOutFinished messages for events.
     """
 
+    _drag_active: var[bool] = var(False)
+
     def on_mount(self) -> None:
-        self._drag_active: bool = False
         self._drag_uris: list[str] = []
         self._drag_op: Literal["copy", "move"] = "copy"
         self._current_drop: Drop | None = None

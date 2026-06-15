@@ -59,17 +59,48 @@ class DNDApp(DrivenApp):
         ...
 ```
 
-## `request_data`
+## `request_data` and `dnd_close`
 
-Call from `on_drop` to fetch actual MIME content:
+Call `request_data` from `on_drop` (or `on_drop_data`) to fetch MIME content by 0-based index into `event.mimes`. Call `dnd_close()` when finished to release kitty's drop state.
+
+```python
+def request_data(self, event: Drop, index: int, close: bool = False) -> None: ...
+def dnd_close(self) -> None: ...
+```
+
+`DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
+
+### Single MIME (auto-close)
+
+Pass `close=True` to have the session close automatically once the data arrives — useful when you only need one MIME type:
 
 ```python
 def on_drop(self, event: Drop) -> None:
     idx = event.mimes.index("text/uri-list")
-    self.request_data(event, idx)   # 0-based index into event.mimes
+    self.request_data(event, idx, close=True)
 ```
 
-`DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
+### Multiple MIMEs (explicit close)
+
+Omit `close=True` and call `dnd_close()` yourself when done — this lets you request multiple MIME types in sequence from a single drop:
+
+```python
+@work
+async def on_drop(self, event: Drop) -> None:
+    self._requested: list[str] = []
+    self.request_data(event, 0)   # fetch first MIME, leave session open
+
+@work
+async def on_drop_data(self, event: DropData) -> None:
+    self._requested.append(event.mime)
+    remaining = [m for m in event.drop_event.mimes if m not in self._requested]
+    if not remaining:
+        self.dnd_close()
+        return
+    # optionally ask the user which to fetch next, then:
+    self.request_data(event.drop_event, event.drop_event.mimes.index(remaining[0]))
+    # call self.dnd_close() once truly done
+```
 
 ## Textual MRO dispatch — important
 
@@ -120,9 +151,10 @@ class DragInApp(DNDApp):
     def on_drop(self, event: Drop) -> None:
         self.query_one("#drop-zone", Static).update("Dropped — fetching…")
         try:
-            self.request_data(event, event.mimes.index("text/uri-list"))
+            # close=True: session closes automatically after data arrives
+            self.request_data(event, event.mimes.index("text/uri-list"), close=True)
         except ValueError:
-            pass
+            self.dnd_close()
 
     def on_drop_data(self, event: DropData) -> None:
         if isinstance(event.data, list):
@@ -198,6 +230,8 @@ python -m textual_drivers.demo --demo drag-out
 
 The kitty DnD protocol uses OSC 72 escape sequences (`\x1b]72;<meta>;<payload>\x1b\\`).
 
-**Drag-in flow:** announce `t=a;*/*` → receive hover `t=m:` → respond `t=m:o=<op>;mimes` → receive drop `t=M:` → request data `t=r:x=<idx>` → receive chunks `t=r:x=<idx>:m=<more>;<b64>` → signal done `t=r:o=1`
+**Drag-in flow:** announce `t=a;*/*` → receive hover `t=m:` → respond `t=m:o=<op>;mimes` → receive drop `t=M:` → request data `t=r:x=<idx>` → receive chunks `t=r:x=<idx>:m=<more>;<b64>` → (repeat request+receive for each additional MIME) → signal done `t=r:o=1`
+
+`request_data(close=True)` sends `t=r:o=1` automatically after the last chunk arrives. Omit it (the default) and call `dnd_close()` yourself when you are done fetching all desired MIMEs.
 
 **Drag-out flow:** announce `t=o:x=1` → receive gesture `t=o:x=<cx>:y=<cy>` → send MIME types + pre-send data → send icon → start drag → handle progress codes
