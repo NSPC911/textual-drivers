@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, Label, Log, Static
+from textual.containers import HorizontalGroup
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, Label, Log, Static
 
 from textual_drivers.dnd import DNDApp, DNDDragIn, Drop, DropData
 
@@ -37,7 +40,7 @@ class DragInApp(DNDApp):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Label("Drag a file from your file manager into this window", id="hint")
+        yield Label("Drag from anywhere into this window", id="hint")
         yield Static("Waiting for drag…", id="drop-zone")
         yield Log(id="log", highlight=True)
         yield Footer()
@@ -60,6 +63,7 @@ class DragInApp(DNDApp):
                 f"Operation: {event.op}  |  MIME types: {mime_str}"
             )
 
+    @work
     async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)
         zone.remove_class("hovering")
@@ -68,23 +72,20 @@ class DragInApp(DNDApp):
             f"Operation: {event.op}  |  MIME types: {', '.join(event.mimes) or '?'}"
         )
         self._log(f"Drop at {event.pos} op={event.op}")
-        try:
-            idx = event.mimes.index("text/uri-list")
-        except ValueError:
-            self._log("No text/uri-list offered — cannot retrieve files")
+        from .helpers import NarrowOptionsWithInput
+        reqmime = await self.push_screen_wait(NarrowOptionsWithInput(event.mimes, "", "Choose a MIME type to request:"))
+        if reqmime is None:
+            self._log("No MIME type chosen, ignoring drop.")
             return
+        idx = event.mimes.index(reqmime)
         self.request_data(event, idx)
 
     def on_drop_data(self, event: DropData) -> None:
         if not isinstance(event.data, list):
-            self._log("Received non-URI data (unexpected MIME type)")
+            self._log(f"{event.mime}: {event.data!r}")
             return
         uris: list[str] = event.data
         n = len(uris)
-        self.query_one("#drop-zone", Static).update(
-            f"[bold]Dropped {n} file{'s' if n != 1 else ''}[/bold]\n"
-            + "\n".join(uri.removeprefix("file://") for uri in uris)
-        )
         self._log(f"Received {n} file(s):")
         for uri in uris:
             self._log(f"  {uri}")
