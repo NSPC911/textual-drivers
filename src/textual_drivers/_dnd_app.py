@@ -122,16 +122,18 @@ class DropData(Message):
     bytes for everything else.
     """
 
-    def __init__(self, drop_event: Drop, data: list[str] | bytes) -> None:
+    def __init__(self, drop_event: Drop, data: list[str] | bytes, mime: str) -> None:
         super().__init__()
         self.drop_event = drop_event
         self.data = data
+        self.mime = mime
 
     def __repr__(self) -> str:
         data_repr = (
             f"{len(self.data)} bytes" if isinstance(self.data, bytes) else repr(self.data)
         )
-        return f"DropData(drop_event={self.drop_event}, data={data_repr})"
+        return f"DropData(drop_event={self.drop_event}, data={data_repr}, mime={self.mime})"
+
 
 class DragOutFinished(Message):
     """Posted when a drag-out operation fully completes or is cancelled."""
@@ -139,6 +141,9 @@ class DragOutFinished(Message):
     def __init__(self, cancelled: bool) -> None:
         super().__init__()
         self.cancelled = cancelled
+
+    def __repr__(self) -> str:
+        return f"DragOutFinished(cancelled={self.cancelled})"
 
 
 # -- Return Types --------------------------------------------------------------
@@ -270,7 +275,7 @@ class DNDApp(DrivenApp):
             ]
         else:
             assembled = self._data_buf
-        self.post_message(DropData(self._current_drop, assembled))
+        self.post_message(DropData(self._current_drop, assembled, mime))
         self._data_buf = b""
         self._write(_osc72("t=r:o=1"))
 

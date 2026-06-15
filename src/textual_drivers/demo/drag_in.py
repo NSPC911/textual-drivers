@@ -63,7 +63,10 @@ class DragInApp(DNDApp):
     async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)
         zone.remove_class("hovering")
-        zone.update("[bold]Dropped![/bold]  Fetching file list…")
+        zone.update(
+            f"Dropped at cell ({event.pos[0]}, {event.pos[1]})\n"
+            f"Operation: {event.op}  |  MIME types: {', '.join(event.mimes) or '?'}"
+        )
         self._log(f"Drop at {event.pos} op={event.op}")
         try:
             idx = event.mimes.index("text/uri-list")
