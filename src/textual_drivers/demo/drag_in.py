@@ -79,10 +79,10 @@ class DragInApp(DNDApp):
         )
         if reqmime is None:
             self._log("No MIME type chosen, ignoring drop.")
-            self.dnd_close()
+            self.close_dnd()
             return
         self._requested_mimes.append(reqmime)
-        self.request_data(event, event.mimes.index(reqmime))
+        self.request_data(event, event.mimes.index(reqmime), close=False)
 
     @work
     async def on_drop_data(self, event: DropData) -> None:
@@ -100,7 +100,7 @@ class DragInApp(DNDApp):
         remaining = [m for m in all_mimes if m not in self._requested_mimes]
         if not remaining:
             self._log("All MIME types received.")
-            self.dnd_close()
+            self.close_dnd()
             return
         reqmime = await self.push_screen_wait(
             NarrowOptionsWithInput(
@@ -109,7 +109,7 @@ class DragInApp(DNDApp):
         )
         if reqmime is None:
             self._log("Done requesting MIME types.")
-            self.dnd_close()
+            self.close_dnd()
             return
         self._requested_mimes.append(reqmime)
         self.request_data(event.drop_event, all_mimes.index(reqmime), close=False)
