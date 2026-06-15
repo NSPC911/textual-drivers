@@ -112,7 +112,7 @@ class DragInApp(DNDApp):
             self.dnd_close()
             return
         self._requested_mimes.append(reqmime)
-        self.request_data(event.drop_event, all_mimes.index(reqmime))
+        self.request_data(event.drop_event, all_mimes.index(reqmime), close=False)
 
     def _log(self, msg: str) -> None:
         self.query_one("#log", Log).write_line(msg)
