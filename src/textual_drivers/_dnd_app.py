@@ -175,7 +175,8 @@ class DNDApp(DrivenApp):
     behaviour. Handle Drop, DropData, and DNDDragOutFinished messages for events.
     """
 
-    _drag_active: var[bool] = var(False)
+    is_dragging_out: var[bool] = var(False, toggle_class="drag-out-active")
+    is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
 
     def on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -225,8 +226,10 @@ class DNDApp(DrivenApp):
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
+            self.is_dragging_in = False
             self._write(_osc72("t=m:o=0"))
             return
+        self.is_dragging_in = True
         returned = self.dnd_drag_in_operation(event)
         if isawaitable(returned):
             accepted = await returned
@@ -249,7 +252,7 @@ class DNDApp(DrivenApp):
             return
         self._drag_uris = result.uris
         self._drag_op = result.op
-        self._drag_active = True
+        self.is_dragging_out = True
         op_int = 1 if result.op == "copy" else 2
         self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
         uri_list = "\r\n".join(result.uris) + "\r\n"
@@ -294,8 +297,8 @@ class DNDApp(DrivenApp):
             return
         code = int(m.group("code"))
         if code == 4:
-            was_active = self._drag_active
-            self._drag_active = False
+            was_active = self.is_dragging_out
+            self.is_dragging_out = False
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
@@ -317,10 +320,10 @@ class DNDApp(DrivenApp):
     # -- User-facing stubs -----------------------------------------------------
 
     async def on_drop(self, event: Drop) -> None:
-        if self._drag_active:
+        if self.is_dragging_out:
             # Self-drop: drag-out item dropped back into our own terminal.
             # Reset drag state and re-register so the next drag-out works.
-            self._drag_active = False
+            self.is_dragging_out, self.is_dragging_in = False
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             self.post_message(DragOutFinished(cancelled=True))
@@ -358,7 +361,7 @@ class DNDApp(DrivenApp):
     @on(events.Unmount)
     @on(events.Hide)
     async def stop_kitty(self) -> None:
-        if self._drag_active:
+        if self.is_dragging_out:
             self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
         self._write(_osc72("t=a"))
