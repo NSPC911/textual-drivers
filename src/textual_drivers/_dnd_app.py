@@ -229,7 +229,6 @@ class DNDApp(DrivenApp):
             self.is_dragging_in = False
             self._write(_osc72("t=m:o=0"))
             return
-        self.is_dragging_in = True
         returned = self.dnd_drag_in_operation(event)
         if isawaitable(returned):
             accepted = await returned
@@ -237,7 +236,9 @@ class DNDApp(DrivenApp):
             accepted = returned
         if not accepted:
             self._write(_osc72("t=m:o=0"))
+            self.is_dragging_in = False
             return
+        self.is_dragging_in = True
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
