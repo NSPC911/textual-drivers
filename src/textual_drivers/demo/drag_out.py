@@ -9,7 +9,7 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
-from textual_drivers.dnd import DNDApp, DragOutFinished, DragOutOperation
+from textual_drivers.dnd import DNDApp, DNDDragOutOperation, DragOutFinished
 
 
 class DragOutApp(DNDApp):
@@ -66,7 +66,7 @@ class DragOutApp(DNDApp):
 
     async def dnd_drag_out_operation(
         self, pos: tuple[int, int]
-    ) -> DragOutOperation | None:
+    ) -> DNDDragOutOperation | None:
         if pos not in self.query_one("#file-list", SelectionList).content_region:
             return
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
@@ -79,7 +79,7 @@ class DragOutApp(DNDApp):
         self.query_one("#status", Label).update(f"Status: dragging {len(uris)} item(s)")
         n = len(uris)
         text = f"{n} file{'s' if n != 1 else ''}"
-        return DragOutOperation(uris, "copy", text)
+        return DNDDragOutOperation(uris, "copy", text)
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None:
         self.query_one("#status", Label).update("Status: idle")
