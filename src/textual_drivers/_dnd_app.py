@@ -321,13 +321,7 @@ class DNDApp(DrivenApp):
     # -- User-facing stubs -----------------------------------------------------
 
     async def on_drop(self, event: Drop) -> None:
-        if self.is_dragging_out:
-            # Self-drop: drag-out item dropped back into our own terminal.
-            # Reset drag state and re-register so the next drag-out works.
-            self.is_dragging_out, self.is_dragging_in = False
-            self._drag_uris = []
-            self._write(_osc72("t=o:x=1"))
-            self.post_message(DragOutFinished(cancelled=True))
+        self.is_dragging_out, self.is_dragging_in = False, False
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
