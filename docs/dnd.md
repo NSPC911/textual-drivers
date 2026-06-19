@@ -47,15 +47,26 @@ class DragOutFinished:
 
 ## Reactive attributes
 
-| Attribute      | Type   | Description                                                                                                                                    |
-| -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `_drag_active` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). Read-only from subclasses; written by `DNDApp` internally. |
+| Attribute         | Type   | Description                                                                         |
+| ----------------- | ------ | ----------------------------------------------------------------------------------- |
+| `is_dragging_out` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). |
+| `is_dragging_in`  | `bool` | `True` while a drag-in is in progress (between the gesture and `DropData`).         |
 
-Because `_drag_active` is a Textual `var`, subclasses can add a watcher to react to drag state changes without polling:
+Because `is_dragging_out` and `is_dragging_in` are Textual `var`s, subclasses can add a watcher to react to drag state changes without polling:
 
 ```python
-def watch__drag_active(self, active: bool) -> None:
+def watch_is_dragging_out(self, active: bool) -> None:
     self.query_one("#status", Label).update("Dragging…" if active else "Idle")
+```
+
+They can also be styled with TCSS:
+
+```css
+DNDApp.drag-in-active {
+    background: green;
+}
+DNDApp.drag-out-active {
+    background: red;
 ```
 
 ## Override methods
