@@ -101,19 +101,23 @@ class Drop(Message):
     Call request_data(event, index) from on_drop to fetch the actual content.
     index is 0-based into event.mimes. Call close_dnd() when done fetching
     all desired MIMEs to release kitty's drop state.
+
+    Check event.rejected before processing — kitty sends x=-1,y=-1 when the
+    drop was previously rejected by dnd_drag_in_operation.
     """
 
     def __init__(self, data: str) -> None:
         super().__init__()
         m = re.search(
-            r"t=M:x=(?P<x>\d+):y=(?P<y>\d+):X=(?P<X>\d+):Y=(?P<Y>\d+)"
-            r":o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*)",
+            r"t=M:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
+            r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
             data,
         )
         if not m:
             raise ValueError(f"Invalid t=M: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
-        o = int(m.group("o"))
+        self.rejected: bool = m.group("o") is None
+        o = int(m.group("o")) if m.group("o") else 1
         self.op: Literal["copy", "move"] = "copy" if o == 1 else "move"
         self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
 
@@ -225,10 +229,11 @@ class DNDApp(DrivenApp):
 
     # -- Internal handlers -----------------------------------------------------
 
-    async def on_dnddrag_in(self, event: DNDDragIn) -> None:
+    async def _on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
             self._write(_osc72("t=m:o=0"))
+            self.drag_state = None
             return
         returned = self.dnd_drag_in_operation(event)
         if isawaitable(returned):
@@ -243,7 +248,7 @@ class DNDApp(DrivenApp):
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
-    async def on_dnddrag_out(self, event: DNDDragOut) -> None:
+    async def _on_dnddrag_out(self, event: DNDDragOut) -> None:
         returned = self.dnd_drag_out_operation(event.pos)
         if isawaitable(returned):
             result = await returned
@@ -270,7 +275,7 @@ class DNDApp(DrivenApp):
         )
         self._write(_osc72("t=P:x=-1"))
 
-    def on_dnddrop_data(self, event: DNDDropData) -> None:
+    def _on_dnddrop_data(self, event: DNDDropData) -> None:
         if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
             return
         self._data_buf += event.chunk
@@ -328,11 +333,16 @@ class DNDApp(DrivenApp):
             "drag-in-rej": new == "in-rej",
         })
 
+    def _on_drop(self, event: Drop) -> None:
+        self.drag_state = None
+        if event.rejected:
+            event.stop().prevent_default()
+
     # -- User-facing stubs -----------------------------------------------------
 
-    async def on_drop(self, event: Drop) -> None: ...
+    # async def on_drop(self, event: Drop) -> None: ...
 
-    async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
+    # async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
     # -- User override methods -------------------------------------------------
 
