@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import re
 from inspect import isawaitable
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, TypeAlias
 
 from textual import events, on
 from textual.geometry import Offset
@@ -17,6 +17,8 @@ from textual_drivers._utils import b64encode, safe
 
 _OSC = "\x1b]"
 _ST = "\x1b\\"
+
+DragState: TypeAlias = Literal["in", "out", "in-rej"]
 
 
 def _osc72(meta: str, payload: str = "") -> str:
@@ -175,8 +177,7 @@ class DNDApp(DrivenApp):
     behaviour. Handle Drop, DropData, and DNDDragOutFinished messages for events.
     """
 
-    is_dragging_out: var[bool] = var(False, toggle_class="drag-out-active")
-    is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
+    drag_state: var[DragState | None] = var(None)
 
     def on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -185,6 +186,7 @@ class DNDApp(DrivenApp):
         self._data_buf: bytes = b""
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
+        self._drag_active: bool = False
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
             return
@@ -226,7 +228,6 @@ class DNDApp(DrivenApp):
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
-            self.is_dragging_in = False
             self._write(_osc72("t=m:o=0"))
             return
         returned = self.dnd_drag_in_operation(event)
@@ -253,7 +254,7 @@ class DNDApp(DrivenApp):
             return
         self._drag_uris = result.uris
         self._drag_op = result.op
-        self.is_dragging_out = True
+        self._drag_active = True
         op_int = 1 if result.op == "copy" else 2
         self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
         uri_list = "\r\n".join(result.uris) + "\r\n"
@@ -298,8 +299,8 @@ class DNDApp(DrivenApp):
             return
         code = int(m.group("code"))
         if code == 4:
-            was_active = self.is_dragging_out
-            self.is_dragging_out = False
+            was_active = self._drag_active
+            self._drag_active = False
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
@@ -318,10 +319,16 @@ class DNDApp(DrivenApp):
             plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
             self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
 
+    def watch_drag_state(self, old: DragState | None, new: DragState | None) -> None:
+        self.update_classes({
+            "drag-in": new == "in",
+            "drag-out": new == "out",
+            "drag-in-rejected": new == "in-rej",
+        })
+
     # -- User-facing stubs -----------------------------------------------------
 
-    async def on_drop(self, event: Drop) -> None:
-        self.is_dragging_out, self.is_dragging_in = False, False
+    async def on_drop(self, event: Drop) -> None: ...
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
@@ -356,7 +363,7 @@ class DNDApp(DrivenApp):
     @on(events.Unmount)
     @on(events.Hide)
     async def stop_kitty(self) -> None:
-        if self.is_dragging_out:
+        if self._drag_active:
             self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
         self._write(_osc72("t=a"))

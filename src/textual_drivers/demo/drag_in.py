@@ -62,6 +62,13 @@ class DragInApp(DNDApp):
                 f"Operation: {event.op}  |  MIME types: {mime_str}"
             )
 
+    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
+        if event.pos in self.query_one("#drop-zone", Static).content_region:
+            self._log(f"Accepting drag at {event.pos} op={event.op}")
+            return True
+        self._log(f"Rejecting drag at {event.pos} op={event.op}")
+        return False
+
     @work
     async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)
