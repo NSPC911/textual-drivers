@@ -33,7 +33,7 @@ def _osc72(meta: str, payload: str = "") -> str:
 class DNDDragIn(Message):
     """Kitty reports a drag is hovering over the app.
 
-    Handler: on_dnddrag_in (DNDApp internal — calls dnd_drag_in_operation).
+    Handler: on_dnddrag_in (DNDApp internal - calls dnd_drag_in_operation).
     pos is (-1, -1) when the drag leaves the window.
     """
 
@@ -48,7 +48,7 @@ class DNDDragIn(Message):
             raise ValueError(f"Invalid t=m: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
         o = int(m.group("o")) if m.group("o") else 0
-        self.op: Literal["copy", "move", "either"] = (
+        self.op: Literal["copy", "move", "either"] | None = (
             "copy" if o == 1 else "move" if o == 2 else "either"
         )
         self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
@@ -57,7 +57,7 @@ class DNDDragIn(Message):
 class DNDDragOut(Message):
     """Kitty reports the user started a drag-out gesture.
 
-    Handler: on_drag_out (DNDApp internal — calls dnd_drag_out_operation).
+    Handler: on_drag_out (DNDApp internal - calls dnd_drag_out_operation).
     """
 
     def __init__(self, data: str) -> None:
@@ -72,7 +72,7 @@ class DNDDragOut(Message):
 
 
 class DNDDropData(Message):
-    """One t=r data chunk from kitty. Internal — accumulated by on_dnddrop_data."""
+    """One t=r data chunk from kitty. Internal - accumulated by on_dnddrop_data."""
 
     def __init__(self, data: str) -> None:
         super().__init__()
@@ -202,7 +202,7 @@ class DNDApp(DrivenApp):
         )
         driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=M:", end=_ST),
-            safe(Drop),
+            Drop,
             priority=True,
         )
         driver.register_event_handler(
@@ -237,9 +237,9 @@ class DNDApp(DrivenApp):
             accepted = returned
         if not accepted:
             self._write(_osc72("t=m:o=0"))
-            self.is_dragging_in = False
+            self.drag_state = "in-rej"
             return
-        self.is_dragging_in = True
+        self.drag_state = "in"
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
@@ -252,6 +252,7 @@ class DNDApp(DrivenApp):
         if result is None:
             self._write(_osc72("t=E:y=-1"))
             return
+        self.drag_state = "out"
         self._drag_uris = result.uris
         self._drag_op = result.op
         self._drag_active = True
@@ -301,6 +302,7 @@ class DNDApp(DrivenApp):
         if code == 4:
             was_active = self._drag_active
             self._drag_active = False
+            self.drag_state = None
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
@@ -323,7 +325,7 @@ class DNDApp(DrivenApp):
         self.update_classes({
             "drag-in": new == "in",
             "drag-out": new == "out",
-            "drag-in-rejected": new == "in-rej",
+            "drag-in-rej": new == "in-rej",
         })
 
     # -- User-facing stubs -----------------------------------------------------
