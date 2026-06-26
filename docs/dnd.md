@@ -49,7 +49,7 @@ class DragOutFinished:
 
 | Attribute    | Type | Description                                                                                                                            |
 | ------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `drag_state` | str  | "in", "out", "in-rej" or `None`, indicating the current drag state. "in-rej" means a drag-in was rejected by `dnd_drag_out_operation`. |
+| `drag_state` | str  | `"in"`, `"out"`, `"in-rej"` or `None`, indicating the current drag state. "in-rej" means a drag-in was rejected by `dnd_drag_out_operation`. |
 
 Reactive variables can be watched without needing to be polled
 
