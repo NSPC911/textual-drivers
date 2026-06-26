@@ -1,6 +1,6 @@
 [project]
 name = "textual-drivers"
-version = "0.3.1.post2"
+version = "0.4.0"
 description = "Drop-in Textual drivers with lock_stdin, register_event_handler, and kitty DnD support"
 readme = "README.md"
 authors = [
@@ -23,7 +23,7 @@ build-backend = "uv_build"
 dev = [
     "ruff>=0.15.15",
     "textual-dev>=1.8.0",
-    "ty==0.0.32",
+    "ty==0.0.49",
 ]
 
 [tool.ruff]
