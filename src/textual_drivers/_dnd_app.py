@@ -181,6 +181,7 @@ class DNDApp(DrivenApp):
 
     is_dragging_out: var[bool] = var(False, toggle_class="drag-out-active")
     is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
+    is_drag_in_rej: var[bool] = var(False, toggle_class="drag-in-rejected")
 
     def on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -225,12 +226,16 @@ class DNDApp(DrivenApp):
         self._write(_osc72("t=o:x=1"))
         self._write(_osc72("t=a", "*/*"))
 
+    def _set_drag_in(self, accepted: bool | None) -> None:
+        self.is_dragging_in = accepted is True
+        self.is_drag_in_rej = accepted is False
+
     # -- Internal handlers -----------------------------------------------------
 
     async def _on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
-            self.is_dragging_in = False
+            self._set_drag_in(None)
             self._write(_osc72("t=m:o=0"))
             return
         returned = self.dnd_drag_in_operation(event)
@@ -239,9 +244,10 @@ class DNDApp(DrivenApp):
         else:
             accepted = returned
         if not accepted:
+            self._set_drag_in(False)
             self._write(_osc72("t=m:o=0"))
             return
-        self.is_dragging_in = True
+        self._set_drag_in(True)
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
@@ -327,7 +333,8 @@ class DNDApp(DrivenApp):
     # -- User-facing stubs -----------------------------------------------------
 
     async def on_drop(self, event: Drop) -> None:
-        self.is_dragging_out, self.is_dragging_in = False, False
+        self.is_dragging_out = False
+        self._set_drag_in(None)
         if event.rejected:
             event.stop().prevent_default()
 

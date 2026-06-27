@@ -50,23 +50,27 @@ class DragOutFinished:
 | Attribute         | Type   | Description                                                                         |
 | ----------------- | ------ | ----------------------------------------------------------------------------------- |
 | `is_dragging_out` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). |
-| `is_dragging_in`  | `bool` | `True` while a drag-in is in progress (between the gesture and `DropData`).         |
+| `is_dragging_in`  | `bool` | `True` while an accepted drag-in is hovering over the window.                       |
+| `is_drag_in_rej`  | `bool` | `True` while a drag-in is hovering but was rejected by `dnd_drag_in_operation`.     |
 
-Because `is_dragging_out` and `is_dragging_in` are Textual `var`s, subclasses can add a watcher to react to drag state changes without polling:
+All three are Textual `var`s, so subclasses can watch them:
 
 ```python
 def watch_is_dragging_out(self, active: bool) -> None:
     self.query_one("#status", Label).update("Dragging…" if active else "Idle")
 ```
 
-They can also be styled with TCSS:
+They can also be styled with TCSS via their toggle classes:
 
 ```css
 DNDApp.drag-in-active {
-    background: green;
+  background: green;
+}
+DNDApp.drag-in-rejected {
+  background: red;
 }
 DNDApp.drag-out-active {
-    background: red;
+  background: blue;
 }
 ```
 
