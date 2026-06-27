@@ -21,9 +21,10 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.15",
-    "textual-dev>=1.8.0",
-    "ty==0.0.49",
+  "poethepoet>=0.41.0",
+  "ruff>=0.15.15",
+  "textual-dev>=1.8.0",
+  "ty==0.0.49",
 ]
 
 [tool.ruff]
@@ -67,3 +68,24 @@ no-matching-overload = "ignore" # not that accurate
 possibly-missing-attribute = "ignore" # no it is not missing
 invalid-assignment = "warn" # probably already but warn for future
 unused-ignore-comment = "ignore"
+
+[tool.poe.tasks]
+fmt.help = ""
+fmt.ref = "format"
+format.help = "Run ruff related formatters"
+format.sequence = [ { cmd = "ruff check --unsafe-fixes --fix"}, { cmd = "ruff format"} ]
+
+check.help = "Run all checks (type checking and linting)"
+check.sequence = [ { cmd = "ty check" },{ cmd = "ruff check" } ]
+
+drag-in.help = "Launch the drag-in demo"
+drag-in.cmd = "python -m textual_drivers.demo.drag_in"
+drag-in.use_exec = true
+
+drag-out.help = "Launch the drag-out demo"
+drag-out.cmd = "python -m textual_drivers.demo.drag_out"
+drag-out.use_exec = true
+
+log.help = "Launch textual's console (need rovr to be launched as dev)"
+log.cmd = "textual console -x WORKER -x SYSTEM -x DEBUG -x EVENT"
+log.use_exec = true
