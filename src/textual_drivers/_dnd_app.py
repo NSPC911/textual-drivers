@@ -381,7 +381,8 @@ class DNDApp(DrivenApp):
     def stop_kitty(self) -> None:
         self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
-        self._write(_osc72("t=A"))  # disable drag-in (uppercase A = disable, lowercase = enable)
+        self._write(_osc72("t=A", ""))
+        self.close_dnd()
 
     async def action_quit(self) -> None:
         self.stop_kitty()
