@@ -10,6 +10,7 @@ from typing import Literal, NamedTuple, TypeAlias
 from textual import events, on
 from textual.geometry import Offset
 from textual.message import Message
+from textual.messages import ExitApp
 from textual.reactive import var
 
 from textual_drivers import BoundedPattern, DrivenApp
@@ -21,10 +22,10 @@ _ST = "\x1b\\"
 DragState: TypeAlias = Literal["in", "out", "in-rej"]
 
 
-def _osc72(meta: str, payload: str = "") -> str:
-    if payload:
-        return f"{_OSC}72;{meta};{payload}{_ST}"
-    return f"{_OSC}72;{meta}{_ST}"
+def _osc72(meta: str, payload: str | None = None) -> str:
+    if payload is None:
+        return f"{_OSC}72;{meta}{_ST}"
+    return f"{_OSC}72;{meta};{payload}{_ST}"
 
 
 # -- Internal messages ---------------------------------------------------------
@@ -51,7 +52,8 @@ class DNDDragIn(Message):
         self.op: Literal["copy", "move", "either"] | None = (
             "copy" if o == 1 else "move" if o == 2 else "either"
         )
-        self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
+        from shlex import split as shplit
+        self.mimes: list[str] = shplit(m.group("mimes")) if m.group("mimes") else []
 
 
 class DNDDragOut(Message):
@@ -374,15 +376,19 @@ class DNDApp(DrivenApp):
 
     @on(events.Unmount)
     @on(events.Hide)
-    async def stop_kitty(self) -> None:
-        if self._drag_active:
-            self._write(_osc72("t=E:y=-1"))
+    @on(ExitApp)
+    def stop_kitty(self) -> None:
+        self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
-        self._write(_osc72("t=a"))
+        self._write(_osc72("t=A"))  # disable drag-in (uppercase A = disable, lowercase = enable)
 
     async def action_quit(self) -> None:
-        await self.stop_kitty()
+        self.stop_kitty()
         await super().action_quit()
+
+    def _fatal_error(self) -> None:
+        self.stop_kitty()
+        return super()._fatal_error()
 
     def _write(self, seq: str) -> None:
         self._driver.write(seq)

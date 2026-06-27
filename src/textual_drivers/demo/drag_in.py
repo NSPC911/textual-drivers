@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from textual import work
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, Log, Static
 
 from textual_drivers.dnd import DNDApp, DNDDragIn, Drop, DropData
@@ -12,7 +11,6 @@ from textual_drivers.dnd import DNDApp, DNDDragIn, Drop, DropData
 
 class DragInApp(DNDApp):
     TITLE = "kitty drag-in demo"
-    BINDINGS = [Binding("ctrl+c", "quit", "Quit")]
 
     CSS = """
     Screen { layout: vertical; }
@@ -95,6 +93,8 @@ class DragInApp(DNDApp):
     async def on_drop_data(self, event: DropData) -> None:
         if not isinstance(event.data, list):
             self._log(f"{event.mime}: {event.data!r}")
+            with open("output.bin", "wb") as f:
+                f.write(event.data)
         else:
             uris: list[str] = event.data
             self._log(f"Received {len(uris)} file(s) for {event.mime}:")

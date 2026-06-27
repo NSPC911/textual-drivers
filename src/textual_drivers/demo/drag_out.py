@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
@@ -14,7 +13,6 @@ from textual_drivers.dnd import DNDApp, DNDDragOutOperation, DragOutFinished
 
 class DragOutApp(DNDApp):
     TITLE = "kitty drag-out demo"
-    BINDINGS = [Binding("e", "quit", "Quit")]
 
     CSS = """
     Screen { layout: vertical; }
