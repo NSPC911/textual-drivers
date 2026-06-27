@@ -6,7 +6,7 @@ import base64
 import re
 from inspect import isawaitable
 from shlex import split as shplit
-from typing import Literal, NamedTuple, TypeAlias
+from typing import Literal, NamedTuple
 
 from textual import events, on
 from textual.geometry import Offset
@@ -19,8 +19,6 @@ from textual_drivers._utils import b64encode, safe
 
 _OSC = "\x1b]"
 _ST = "\x1b\\"
-
-DragState: TypeAlias = Literal["in", "out", "in-rej"]
 
 
 def _osc72(meta: str, payload: str | None = None) -> str:
@@ -181,7 +179,8 @@ class DNDApp(DrivenApp):
     behaviour. Handle Drop, DropData, and DNDDragOutFinished messages for events.
     """
 
-    drag_state: var[DragState | None] = var(None)
+    is_dragging_out: var[bool] = var(False, toggle_class="drag-out-active")
+    is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
 
     def on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -190,7 +189,6 @@ class DNDApp(DrivenApp):
         self._data_buf: str = ""
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
-        self._drag_active: bool = False
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
             return
@@ -232,8 +230,8 @@ class DNDApp(DrivenApp):
     async def _on_dnddrag_in(self, event: DNDDragIn) -> None:
         x, y = event.pos
         if x == -1 and y == -1:
+            self.is_dragging_in = False
             self._write(_osc72("t=m:o=0"))
-            self.drag_state = None
             return
         returned = self.dnd_drag_in_operation(event)
         if isawaitable(returned):
@@ -242,9 +240,8 @@ class DNDApp(DrivenApp):
             accepted = returned
         if not accepted:
             self._write(_osc72("t=m:o=0"))
-            self.drag_state = "in-rej"
             return
-        self.drag_state = "in"
+        self.is_dragging_in = True
         op_int = 1 if event.op in ("copy", "either") else 2
         self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
 
@@ -257,10 +254,9 @@ class DNDApp(DrivenApp):
         if result is None:
             self._write(_osc72("t=E:y=-1"))
             return
-        self.drag_state = "out"
         self._drag_uris = result.uris
         self._drag_op = result.op
-        self._drag_active = True
+        self.is_dragging_out = True
         op_int = 1 if result.op == "copy" else 2
         self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
         uri_list = "\r\n".join(result.uris) + "\r\n"
@@ -308,9 +304,8 @@ class DNDApp(DrivenApp):
             return
         code = int(m.group("code"))
         if code == 4:
-            was_active = self._drag_active
-            self._drag_active = False
-            self.drag_state = None
+            was_active = self.is_dragging_out
+            self.is_dragging_out = False
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
@@ -329,21 +324,12 @@ class DNDApp(DrivenApp):
             plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
             self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
 
-    def watch_drag_state(self, old: DragState | None, new: DragState | None) -> None:
-        self.update_classes({
-            "drag-in": new == "in",
-            "drag-out": new == "out",
-            "drag-in-rej": new == "in-rej",
-        })
-
-    def _on_drop(self, event: Drop) -> None:
-        self.drag_state = None
-        if event.rejected:
-            event.stop().prevent_default()
-
     # -- User-facing stubs -----------------------------------------------------
 
-    # async def on_drop(self, event: Drop) -> None: ...
+    async def on_drop(self, event: Drop) -> None:
+        self.is_dragging_out, self.is_dragging_in = False, False
+        if event.rejected:
+            event.stop().prevent_default()
 
     # async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
@@ -380,7 +366,8 @@ class DNDApp(DrivenApp):
     @on(ExitApp)
     def stop_kitty(self) -> None:
         self.close_dnd()
-        self._write(_osc72("t=E:y=-1"))
+        if self.is_dragging_out:
+            self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
         self._write(_osc72("t=A", ""))
 

@@ -47,27 +47,26 @@ class DragOutFinished:
 
 ## Reactive attributes
 
-| Attribute    | Type | Description                                                                                                                            |
-| ------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `drag_state` | str  | `"in"`, `"out"`, `"in-rej"` or `None`, indicating the current drag state. "in-rej" means a drag-in was rejected by `dnd_drag_out_operation`. |
+| Attribute         | Type   | Description                                                                         |
+| ----------------- | ------ | ----------------------------------------------------------------------------------- |
+| `is_dragging_out` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). |
+| `is_dragging_in`  | `bool` | `True` while a drag-in is in progress (between the gesture and `DropData`).         |
 
-Reactive variables can be watched without needing to be polled
+Because `is_dragging_out` and `is_dragging_in` are Textual `var`s, subclasses can add a watcher to react to drag state changes without polling:
 
 ```python
-def watch_drag_state(self, old: DragState | None, new: DragState | None) -> None:
-    ...
+def watch_is_dragging_out(self, active: bool) -> None:
+    self.query_one("#status", Label).update("Dragging…" if active else "Idle")
 ```
 
-It also automatically updates classes on the app
+They can also be styled with TCSS:
+
 ```css
-.drag-in {
-    /* drag-in is active */
+DNDApp.drag-in-active {
+    background: green;
 }
-.drag-out {
-    /* drag-out is active */
-}
-.drag-in-rej {
-    /* drag-in was rejected */
+DNDApp.drag-out-active {
+    background: red;
 }
 ```
 
