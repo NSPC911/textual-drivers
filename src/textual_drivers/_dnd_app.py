@@ -379,10 +379,10 @@ class DNDApp(DrivenApp):
     @on(events.Hide)
     @on(ExitApp)
     def stop_kitty(self) -> None:
+        self.close_dnd()
         self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"))
         self._write(_osc72("t=A", ""))
-        self.close_dnd()
 
     async def action_quit(self) -> None:
         self.stop_kitty()
