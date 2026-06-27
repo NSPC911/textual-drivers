@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import re
 from inspect import isawaitable
+from shlex import split as shplit
 from typing import Literal, NamedTuple, TypeAlias
 
 from textual import events, on
@@ -52,7 +53,6 @@ class DNDDragIn(Message):
         self.op: Literal["copy", "move", "either"] | None = (
             "copy" if o == 1 else "move" if o == 2 else "either"
         )
-        from shlex import split as shplit
         self.mimes: list[str] = shplit(m.group("mimes")) if m.group("mimes") else []
 
 
@@ -86,9 +86,7 @@ class DNDDropData(Message):
             raise ValueError(f"Invalid t=r chunk: {data!r}")
         self.idx: int = int(m.group("idx"))
         self.more: bool = m.group("more") == "1"
-        b64 = m.group("b64")
-        b64 += "=" * (-len(b64) % 4)
-        self.chunk: bytes = base64.b64decode(b64.encode())
+        self.chunk: str = m.group("b64")
 
     def __repr__(self) -> str:
         return f"DNDDropData(idx={self.idx}, more={self.more}, chunk_len={len(self.chunk)})"
@@ -121,7 +119,7 @@ class Drop(Message):
         self.rejected: bool = m.group("o") is None
         o = int(m.group("o")) if m.group("o") else 1
         self.op: Literal["copy", "move"] = "copy" if o == 1 else "move"
-        self.mimes: list[str] = m.group("mimes").split() if m.group("mimes") else []
+        self.mimes: list[str] = shplit(m.group("mimes")) if m.group("mimes") else []
 
     def __repr__(self) -> str:
         return f"Drop(pos={self.pos}, op={self.op}, mimes={self.mimes})"
@@ -189,7 +187,7 @@ class DNDApp(DrivenApp):
         self._drag_uris: list[str] = []
         self._drag_op: Literal["copy", "move"] = "copy"
         self._current_drop: Drop | None = None
-        self._data_buf: bytes = b""
+        self._data_buf: str = ""
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
         self._drag_active: bool = False
@@ -284,20 +282,23 @@ class DNDApp(DrivenApp):
         if event.more:
             return
         if self._current_drop is None:
-            self._data_buf = b""
+            self._data_buf = ""
             return
         mime = self._current_drop.mimes[self._data_mime_idx]
+        b64 = self._data_buf
+        b64 += "=" * (-len(b64) % 4)
+        raw = base64.b64decode(b64.encode())
         assembled: list[str] | bytes
         if mime == "text/uri-list":
             assembled = [
                 line
-                for line in self._data_buf.decode().splitlines()
+                for line in raw.decode().splitlines()
                 if line and not line.startswith("#")
             ]
         else:
-            assembled = self._data_buf
+            assembled = raw
         self.post_message(DropData(self._current_drop, assembled, mime))
-        self._data_buf = b""
+        self._data_buf = ""
         if self._close_after_data:
             self._write(_osc72("t=r:o=1"))
 
@@ -366,7 +367,7 @@ class DNDApp(DrivenApp):
         """
         self._current_drop = event
         self._data_mime_idx = index
-        self._data_buf = b""
+        self._data_buf = ""
         self._close_after_data = close
         self._write(_osc72(f"t=r:x={index + 1}"))
 

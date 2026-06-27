@@ -43,7 +43,7 @@ class DragInApp(DNDApp):
 
     def on_mount(self) -> None:
         self._requested_mimes: list[str] = []
-        self._log("Ready — drag a file from your file manager")
+        self.Log("Ready — drag a file from your file manager")
 
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         zone = self.query_one("#drop-zone", Static)
@@ -51,7 +51,7 @@ class DragInApp(DNDApp):
         if x == -1 and y == -1:
             zone.remove_class("hovering")
             zone.update("Drag left the window — drop here to transfer")
-            self._log("Drag left window")
+            self.Log("Drag left window")
         else:
             mime_str = ", ".join(event.mimes) or "?"
             zone.add_class("hovering")
@@ -61,10 +61,13 @@ class DragInApp(DNDApp):
             )
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
+        if len(self.screen_stack) > 1:
+            self.Log(f"Rejecting drag at {event.pos} op={event.op} (screen stack > 1)")
+            return False
         if event.pos in self.query_one("#drop-zone", Static).content_region:
-            self._log(f"Accepting drag at {event.pos} op={event.op}")
+            self.Log(f"Accepting drag at {event.pos} op={event.op}")
             return True
-        self._log(f"Rejecting drag at {event.pos} op={event.op}")
+        self.Log(f"Rejecting drag at {event.pos} op={event.op}")
         return False
 
     @work
@@ -75,7 +78,7 @@ class DragInApp(DNDApp):
             f"Dropped at cell ({event.pos[0]}, {event.pos[1]})\n"
             f"Operation: {event.op}  |  MIME types: {', '.join(event.mimes) or '?'}"
         )
-        self._log(f"Drop at {event.pos} op={event.op}")
+        self.Log(f"Drop at {event.pos} op={event.op}")
         self._requested_mimes = []
         from .helpers import NarrowOptionsWithInput
 
@@ -83,7 +86,7 @@ class DragInApp(DNDApp):
             NarrowOptionsWithInput(event.mimes, "", "Choose a MIME type to request:")
         )
         if reqmime is None:
-            self._log("No MIME type chosen, ignoring drop.")
+            self.Log("No MIME type chosen, ignoring drop.")
             self.close_dnd()
             return
         self._requested_mimes.append(reqmime)
@@ -92,21 +95,19 @@ class DragInApp(DNDApp):
     @work
     async def on_drop_data(self, event: DropData) -> None:
         if not isinstance(event.data, list):
-            self._log(f"{event.mime}: {event.data!r}")
-            with open("output.bin", "wb") as f:
-                f.write(event.data)
+            self._log_(f"{event.mime}: {event.data!r}")
         else:
             uris: list[str] = event.data
-            self._log(f"Received {len(uris)} file(s) for {event.mime}:")
+            self._log_(f"Received {len(uris)} file(s) for {event.mime}:")
             for uri in uris:
-                self._log(f"  {uri}")
+                self._log_(f"  {uri}")
 
         from .helpers import NarrowOptionsWithInput
 
         all_mimes = event.drop_event.mimes
         remaining = [m for m in all_mimes if m not in self._requested_mimes]
         if not remaining:
-            self._log("All MIME types received.")
+            self.Log("All MIME types received.")
             self.close_dnd()
             return
         reqmime = await self.push_screen_wait(
@@ -115,14 +116,18 @@ class DragInApp(DNDApp):
             )
         )
         if reqmime is None:
-            self._log("Done requesting MIME types.")
+            self.Log("Done requesting MIME types.")
             self.close_dnd()
             return
         self._requested_mimes.append(reqmime)
         self.request_data(event.drop_event, all_mimes.index(reqmime), close=False)
 
-    def _log(self, msg: str) -> None:
+    def Log(self, msg: str) -> None:
         self.query_one("#log", Log).write_line(msg)
+
+    def _log_(self, msg: str) -> None:
+        self.Log(msg)
+        self.log(msg)
 
 
 if __name__ == "__main__":
