@@ -100,7 +100,9 @@ async def on_drop(self, event: Drop) -> None:
     self.request_data(event, idx)
 ```
 
-`DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
+`DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`. Assembly (base64 decode) runs in a background thread, so large binary MIME types like `image/png` do not block the UI.
+
+If no data arrives within 30 seconds, `DropData` is posted with `data=b""` as a timeout sentinel — check for this before processing.
 
 ### Single MIME (auto-close)
 
