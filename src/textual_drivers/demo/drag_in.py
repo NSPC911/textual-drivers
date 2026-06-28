@@ -60,8 +60,6 @@ class DragInApp(DNDApp):
                 f"Operation: {event.op}  |  MIME types: {mime_str}"
             )
 
-
-
     @work
     async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)

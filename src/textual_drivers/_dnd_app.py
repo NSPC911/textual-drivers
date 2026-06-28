@@ -8,11 +8,12 @@ from inspect import isawaitable
 from shlex import split as shplit
 from typing import Literal, NamedTuple
 
-from textual import events, on
+from textual import events, on, work
 from textual.geometry import Offset
 from textual.message import Message
 from textual.messages import ExitApp
 from textual.reactive import var
+from textual.timer import Timer
 
 from textual_drivers import BoundedPattern, DrivenApp
 from textual_drivers._utils import b64encode, safe
@@ -183,13 +184,16 @@ class DNDApp(DrivenApp):
     is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
     is_drag_in_rej: var[bool] = var(False, toggle_class="drag-in-rejected")
 
-    def on_mount(self) -> None:
+    def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
         self._drag_op: Literal["copy", "move"] = "copy"
         self._current_drop: Drop | None = None
-        self._data_buf: str = ""
+        self._data_chunks: list[str] = []
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
+        self._drop_timeout_timer: Timer | None = None
+        self._drop_timeout: float = 30.0
+
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
             return
@@ -280,14 +284,31 @@ class DNDApp(DrivenApp):
     def _on_dnddrop_data(self, event: DNDDropData) -> None:
         if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
             return
-        self._data_buf += event.chunk
+        if self._drop_timeout_timer is not None:
+            self._drop_timeout_timer.stop()
+        self._data_chunks.append(event.chunk)
         if event.more:
             return
         if self._current_drop is None:
-            self._data_buf = ""
+            self._data_chunks = []
             return
-        mime = self._current_drop.mimes[self._data_mime_idx]
-        b64 = self._data_buf
+        self._assemble_drop(
+            self._current_drop,
+            self._data_chunks,
+            self._current_drop.mimes[self._data_mime_idx],
+            self._close_after_data,
+        )
+        self._data_chunks = []
+
+    @work(thread=True)
+    def _assemble_drop(
+        self,
+        drop: Drop,
+        chunks: list[str],
+        mime: str,
+        close: bool,
+    ) -> None:
+        b64 = "".join(chunks)
         b64 += "=" * (-len(b64) % 4)
         raw = base64.b64decode(b64.encode())
         assembled: list[str] | bytes
@@ -299,10 +320,9 @@ class DNDApp(DrivenApp):
             ]
         else:
             assembled = raw
-        self.post_message(DropData(self._current_drop, assembled, mime))
-        self._data_buf = ""
-        if self._close_after_data:
-            self._write(_osc72("t=r:o=1"))
+        self.post_message(DropData(drop, assembled, mime))
+        if close:
+            self.call_from_thread(self._write, _osc72("t=r:o=1"))
 
     def _handle_drag_progress(self, data: str) -> None:
         m = re.search(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?", data)
@@ -340,6 +360,8 @@ class DNDApp(DrivenApp):
 
     # async def on_drag_out_finished(self, event: DragOutFinished) -> None: ...
 
+    # async def on_drop_data(self, event: DropData) -> None: ...
+
     # -- User override methods -------------------------------------------------
 
     async def dnd_drag_out_operation(self, pos: Offset) -> DNDDragOutOperation | None:
@@ -360,7 +382,12 @@ class DNDApp(DrivenApp):
         """
         self._current_drop = event
         self._data_mime_idx = index
-        self._data_buf = ""
+        self._data_chunks = []
+        self._drop_timeout_timer = self.set_timer(
+            self._drop_timeout,
+            lambda: self.post_message(DropData(event, b"", event.mimes[index])),
+            name="kitty dnd drop request timeout timer",
+        )
         self._close_after_data = close
         self._write(_osc72(f"t=r:x={index + 1}"))
 
