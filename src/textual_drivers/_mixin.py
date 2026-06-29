@@ -152,6 +152,15 @@ class BoundedPattern(NamedTuple):
 Pattern: TypeAlias = str | BoundedPattern | re.Pattern[str]
 
 
+class _CompiledGlob(NamedTuple):
+    """Compiled form of a public str glob pattern."""
+
+    match: Callable[[str], re.Match[str] | None]
+
+
+HandlerPattern: TypeAlias = BoundedPattern | re.Pattern[str] | _CompiledGlob
+
+
 def _find_bounded(data: str, start: str, end: str) -> list[str]:
     """Return all non-overlapping substrings of *data* delimited by *start*…*end*."""  # noqa: DOC201
     results: list[str] = []
@@ -183,7 +192,9 @@ class EventHandlerMixin:
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._event_handlers: list[tuple[Pattern, Callable[[str], object], bool]] = []
+        self._event_handlers: list[
+            tuple[HandlerPattern, Callable[[str], object], bool]
+        ] = []
         self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
 
     def register_event_handler(
@@ -207,7 +218,13 @@ class EventHandlerMixin:
                 to XTermParser and to non-priority handlers, preventing
                 double-dispatch.
         """
-        self._event_handlers.append((pattern, event_constructor, priority))
+        if isinstance(pattern, str):
+            handler_pattern: HandlerPattern = _CompiledGlob(
+                re.compile(fnmatch.translate(pattern)).match
+            )
+        else:
+            handler_pattern = pattern
+        self._event_handlers.append((handler_pattern, event_constructor, priority))
 
     def _dispatch_custom_handlers(self, data: str) -> str:
         """Dispatch registered handlers and return filtered data.
@@ -227,21 +244,28 @@ class EventHandlerMixin:
 
         self.raw_data_signal.publish(data)
 
-        to_strip: list[str] = []
+        to_strip: list[str] | None = None
         for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
                 chunks = _find_bounded(data, pattern.start, pattern.end)
-            elif isinstance(pattern, re.Pattern):
-                chunks = [m.group() for m in pattern.finditer(data)]
-            else:
+            elif isinstance(pattern, _CompiledGlob):
                 # str glob: split on ESC so each escape sequence is checked individually
-                chunks = [
-                    "\x1b[" + part
-                    for part in data.split("\x1b[")
-                    if part and fnmatch.fnmatch("\x1b[" + part, pattern)
-                ]
+                chunks = []
+                match = pattern.match
+                for part in data.split("\x1b["):
+                    if part:
+                        chunk = "\x1b[" + part
+                        if match(chunk):
+                            chunks.append(chunk)
+            else:
+                chunks = [m.group() for m in pattern.finditer(data)]
+
+            if not chunks:
+                continue
 
             if priority:
+                if to_strip is None:
+                    to_strip = []
                 to_strip.extend(chunks)
 
             for chunk in chunks:
@@ -249,6 +273,9 @@ class EventHandlerMixin:
                 if isinstance(event, Message):
                     event.set_sender(self._app)  # type: ignore[attr-defined]
                     self.send_message(event)  # type: ignore[attr-defined]
+
+        if to_strip is None:
+            return data
 
         filtered = data
         for chunk in to_strip:
