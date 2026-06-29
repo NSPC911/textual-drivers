@@ -12,10 +12,10 @@ from textual.message import Message
 from textual.signal import Signal
 
 try:
-    import fcntl
+    import fcntl  # ty: ignore[unresolved-import]
 
     _HAS_FCNTL = True
-except ImportError:  # pragma: no cover - Windows
+except ImportError:
     _HAS_FCNTL = False
 
 # Every terminal event mode Textual enables on start-up that can be toggled:
