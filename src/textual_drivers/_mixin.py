@@ -158,12 +158,17 @@ HandlerPattern: TypeAlias = BoundedPattern | re.Pattern[str] | GlobMatcher
 EventHandler: TypeAlias = tuple[HandlerPattern, Callable[[str], object], bool]
 
 
-def _find_bounded(data: str, start: str, end: str) -> list[str]:
+def _find_bounded(
+    data: str,
+    start: str,
+    end: str,
+    first_start: int | None = None,
+) -> list[str]:
     """Return all non-overlapping substrings of *data* delimited by *start*…*end*."""  # noqa: DOC201
     results: list[str] = []
     pos = 0
+    s = data.find(start, pos) if first_start is None else first_start
     while True:
-        s = data.find(start, pos)
         if s == -1:
             break
         e = data.find(end, s + len(start))
@@ -172,6 +177,7 @@ def _find_bounded(data: str, start: str, end: str) -> list[str]:
         stop = e + len(end)
         results.append(data[s:stop])
         pos = stop
+        s = data.find(start, pos)
     return results
 
 
@@ -265,7 +271,10 @@ class EventHandlerMixin:
         )
         for pattern, constructor, priority in event_handlers:
             if isinstance(pattern, BoundedPattern):
-                chunks = _find_bounded(data, pattern.start, pattern.end)
+                first_start = data.find(pattern.start)
+                if first_start == -1:
+                    continue
+                chunks = _find_bounded(data, pattern.start, pattern.end, first_start)
             elif isinstance(pattern, re.Pattern):
                 chunks = [m.group() for m in pattern.finditer(data)]
             else:
