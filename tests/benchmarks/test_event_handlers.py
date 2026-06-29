@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pytest_benchmark.fixture import BenchmarkFixture
@@ -22,6 +23,7 @@ class DummyMessage(Message):
 class DummyDriver(EventHandlerMixin):
     def __init__(self) -> None:
         self._event_handlers = []
+        self._non_bounded_handlers = []
         self._has_non_bounded_handlers = False
         self._bounded_prefixes = set()
         self.raw_data_signal = RawSignal()  # ty: ignore[invalid-assignment]
@@ -44,6 +46,13 @@ def make_driver(constructor: Any = lambda _: None) -> DummyDriver:
     return driver
 
 
+def make_mixed_driver(constructor: Any = lambda _: None) -> DummyDriver:
+    driver = make_driver(constructor)
+    driver.register_event_handler(re.compile(r"mouse:\d+,\d+"), constructor)
+    driver.register_event_handler("\x1b[<35;*M", constructor)
+    return driver
+
+
 CHUNKS = [
     "a",
     "hello world",
@@ -63,6 +72,19 @@ MATCHING_CHUNK = (
     "tail"
 )
 MATCHING_CHUNKS = [MATCHING_CHUNK] * 20_000
+MIXED_NO_MATCH_CHUNKS = [
+    "plain",
+    "\x1b[A",
+    "mouse",
+    "\x1b[<0;10;20m",
+] * 20_000
+MIXED_MATCHING_CHUNK = (
+    "prefix"
+    "\x1b]72;t=m:x=1:y=2\x1b\\"
+    "mouse:12,34"
+    "\x1b[<35;120;44M"
+)
+MIXED_MATCHING_CHUNKS = [MIXED_MATCHING_CHUNK] * 20_000
 
 
 def run_workload() -> int:
@@ -77,6 +99,22 @@ def run_bounded_match_workload() -> int:
     driver = make_driver(DummyMessage)
     total = 0
     for chunk in MATCHING_CHUNKS:
+        total += len(driver._dispatch_custom_handlers(chunk))
+    return total + len(driver.sent)
+
+
+def run_mixed_no_match_workload() -> int:
+    driver = make_mixed_driver()
+    total = 0
+    for chunk in MIXED_NO_MATCH_CHUNKS:
+        total += len(driver._dispatch_custom_handlers(chunk))
+    return total
+
+
+def run_mixed_match_workload() -> int:
+    driver = make_mixed_driver(DummyMessage)
+    total = 0
+    for chunk in MIXED_MATCHING_CHUNKS:
         total += len(driver._dispatch_custom_handlers(chunk))
     return total + len(driver.sent)
 
@@ -100,6 +138,19 @@ def test_bounded_handler_non_match_preserves_data() -> None:
     assert driver.sent == []
 
 
+def test_mixed_handlers_preserve_order_and_priority_stripping() -> None:
+    driver = make_mixed_driver(DummyMessage)
+
+    filtered = driver._dispatch_custom_handlers(MIXED_MATCHING_CHUNK)
+
+    assert filtered == "prefixmouse:12,34\x1b[<35;120;44M"
+    assert [event.data for event in driver.sent] == [
+        "\x1b]72;t=m:x=1:y=2\x1b\\",
+        "mouse:12,34",
+        "\x1b[<35;120;44M",
+    ]
+
+
 def test_dispatch_bounded_handlers_without_osc72_matches(
     benchmark: BenchmarkFixture,
 ) -> None:
@@ -112,5 +163,21 @@ def test_dispatch_bounded_handlers_with_osc72_matches(
     benchmark: BenchmarkFixture,
 ) -> None:
     result = benchmark(run_bounded_match_workload)
+
+    assert result > 0
+
+
+def test_dispatch_mixed_handlers_without_matches(
+    benchmark: BenchmarkFixture,
+) -> None:
+    result = benchmark(run_mixed_no_match_workload)
+
+    assert result > 0
+
+
+def test_dispatch_mixed_handlers_with_matches(
+    benchmark: BenchmarkFixture,
+) -> None:
+    result = benchmark(run_mixed_match_workload)
 
     assert result > 0
