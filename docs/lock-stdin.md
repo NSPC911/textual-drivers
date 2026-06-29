@@ -8,14 +8,14 @@ On **entry** it:
 
 1. Pauses the driver's stdin reader thread (cooperative pause via `threading.Condition`, ≤ ~100 ms to acknowledge).
 2. Disables all terminal event reporting that Textual enables (like mouse tracking, focus tracking, kitty key protocol, and bracketed paste) so no weird escape sequences arrive while you hold the lock.
-3. Waits 50 ms for any already-in-transit events to land in the OS buffer before yielding, so a drain at the top of the block reliably clears them.
+3. Drains bytes already queued in stdin on POSIX ttys before yielding, avoiding a fixed settle delay on every lock.
 
 On **exit**, event reporting is re-enabled and the input thread resumes. Nesting is supported, though not recommended; the disable/re-enable only happens on the outermost entry and exit.
 
 ## Notes
 
 - `lock_stdin()` waits up to 0.5 s for the input thread to acknowledge the pause. If called before the input thread starts (or after it stops) it proceeds immediately.
-- Plain key events **cannot** be disabled via escape sequences. Drain stdin at the start of the block to discard any buffered keypresses, the terminal response arrives in < 1 ms, before the user can type another character.
+- Plain key events **cannot** be disabled via escape sequences. `lock_stdin()` drains bytes that are already buffered on POSIX ttys, but terminal or network latency can still deliver bytes after the drain.
 - `lock_stdin()` pauses Textual's stdin reader and silences terminal events, but does **not** restore the terminal to cooked/canonical mode. If your subprocess needs line-buffered input (e.g. `input()` or a shell), call the [`app.suspend()`](https://textual.textualize.io/api/app/#textual.app.App.suspend) context manager.
 
 ## Example — querying the terminal

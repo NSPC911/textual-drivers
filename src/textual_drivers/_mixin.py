@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
+import sys
 import threading
-import time
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, NamedTuple, Protocol, TypeAlias
 
 from textual.message import Message
 from textual.signal import Signal
+
+try:
+    import fcntl  # ty: ignore[unresolved-import]
+
+    _HAS_FCNTL = True
+except ImportError:
+    _HAS_FCNTL = False
 
 # Every terminal event mode Textual enables on start-up that can be toggled:
 #   mouse (1000/1002/1003/1006), focus tracking (1004),
@@ -42,6 +50,24 @@ class LockStdinMixin:
         self._pause_lock_count: int = 0
         self._stdin_is_paused: bool = False
 
+    def _drain_stdin_buffer(self) -> None:
+        """Drain currently buffered stdin bytes without blocking."""
+        if not _HAS_FCNTL or not sys.stdin.isatty():
+            return
+
+        fd = sys.stdin.fileno()
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        try:
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            while True:
+                try:
+                    if not os.read(fd, 4096):
+                        break
+                except (BlockingIOError, OSError):
+                    break
+        finally:
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+
     @contextmanager
     def lock_stdin(self) -> Generator[None, None, None]:
         """Pause the stdin input thread and disable terminal event reporting.
@@ -49,10 +75,8 @@ class LockStdinMixin:
         The input thread voluntarily stops at its next pause point (at most one
         read cycle, ≤ ~100 ms) and confirms via _stdin_is_paused before this
         yields.  All terminal event modes Textual enables (mouse, focus tracking,
-        kitty key protocol, bracketed paste) are disabled for the duration so
-        that no unsolicited escape sequences can arrive in stdin.  A 50 ms settle
-        delay after disabling gives any already-in-transit events time to arrive
-        before the caller drains the buffer.
+        kitty key protocol, bracketed paste) are disabled for the duration. Any
+        bytes already queued in stdin are drained before yielding on POSIX ttys.
 
         Plain key events cannot be disabled via escape sequences; drain stdin
         after entering the context to discard any buffered keypresses.
@@ -71,8 +95,7 @@ class LockStdinMixin:
         if is_outermost:
             self.write(_EVENTS_DISABLE)  # type: ignore[attr-defined]
             self.flush()  # type: ignore[attr-defined]
-            # Give any in-transit events time to arrive so the caller can drain them.
-            time.sleep(0.05)
+            self._drain_stdin_buffer()
 
         try:
             yield
