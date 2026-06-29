@@ -241,17 +241,24 @@ class EventHandlerMixin:
         to_strip: list[str] = []
         for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
+                if data.find(pattern.start) == -1:
+                    continue
                 chunks = _find_bounded(data, pattern.start, pattern.end)
             elif isinstance(pattern, re.Pattern):
                 chunks = [m.group() for m in pattern.finditer(data)]
             else:
                 # str glob: split on ESC so each escape sequence is checked individually
                 chunks = []
-                for part in data.split("\x1b["):
-                    if part:
-                        chunk = "\x1b[" + part
-                        if pattern(chunk):
-                            chunks.append(chunk)
+                if "\x1b[" not in data:
+                    chunk = "\x1b[" + data
+                    if data and pattern(chunk):
+                        chunks.append(chunk)
+                else:
+                    for part in data.split("\x1b["):
+                        if part:
+                            chunk = "\x1b[" + part
+                            if pattern(chunk):
+                                chunks.append(chunk)
 
             if not chunks:
                 continue
