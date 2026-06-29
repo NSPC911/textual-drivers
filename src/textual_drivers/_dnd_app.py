@@ -170,6 +170,15 @@ class DNDDragOutOperation(NamedTuple):
     """Size of the popup text. The popup text's size is inversely proportional to this value."""
 
 
+class DNDDragInOperation(NamedTuple):
+    accepted: bool
+    """Whether the drag-in is accepted or rejected."""
+    op: Literal["copy", "move", "either"]
+    """The operation to allow for the drag-in."""
+    mimes: list[str]
+    """List of MIME types to accept for the drag-in."""
+
+
 # -- App -----------------------------------------------------------------------
 
 
@@ -242,18 +251,22 @@ class DNDApp(DrivenApp):
             self._set_drag_in(None)
             self._write(_osc72("t=m:o=0"))
             return
-        returned = self.dnd_drag_in_operation(event)
-        if isawaitable(returned):
-            accepted = await returned
+        result = self.dnd_drag_in_operation(event)
+        if isawaitable(result):
+            result = await result
         else:
-            accepted = returned
-        if not accepted:
+            result = result
+        if isinstance(result, bool):
+            result = DNDDragInOperation(
+                accepted=result, op="either", mimes=event.mimes
+            )
+        if not result.accepted:
             self._set_drag_in(False)
             self._write(_osc72("t=m:o=0"))
             return
         self._set_drag_in(True)
-        op_int = 1 if event.op in ("copy", "either") else 2
-        self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
+        op_int = 1 if result.op in ("copy", "either") else 0
+        self._write(_osc72(f"t=m:o={op_int}", " ".join(result.mimes)))
 
     async def _on_dnddrag_out(self, event: DNDDragOut) -> None:
         returned = self.dnd_drag_out_operation(event.pos)
@@ -368,9 +381,9 @@ class DNDApp(DrivenApp):
         """Return DNDDragOutOperation to start a drag-out, or None to cancel."""  # noqa: DOC201
         return None
 
-    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
+    async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
         """Return True to accept the incoming drag, False to reject."""  # noqa: DOC201
-        return True
+        return DNDDragInOperation(accepted=True, op="either", mimes=event.mimes)
 
     # -- Helpers ---------------------------------------------------------------
 

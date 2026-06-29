@@ -43,7 +43,7 @@ class DragOutFinished:
 
 ### Internal (do not handle directly)
 
-`DNDDragIn`, `DNDDragOut`, `DNDDropData` and `DNDDragOutOperation` are used internally by `DNDApp` and should not be handled in subclasses.
+`DNDDragIn`, `DNDDragOut` and `DNDDropData` are used internally by `DNDApp` and should not be handled in subclasses.
 
 ## Reactive attributes
 
@@ -84,8 +84,8 @@ class DNDApp(DrivenApp):
         """Return DNDDragOutOperation to start a drag-out, or None to cancel."""
         ...
 
-    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
-        """Return True to accept the incoming drag, False to reject."""
+    async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
+        """Return DNDDragInOperation to customize the drag-in, or bool for simple accept/reject."""
         ...
 ```
 
