@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import os
-import selectors
-from codecs import getincrementaldecoder
-
 from textual import events
-from textual._loop import loop_last
-from textual._parser import ParseError
-from textual._xterm_parser import XTermParser
 from textual.drivers.linux_inline_driver import LinuxInlineDriver
+from textual.message import Message
 
+from textual_drivers._linux_input import run_linux_input_thread
 from textual_drivers._mixin import EventHandlerMixin, LockStdinMixin
 
 
@@ -18,51 +13,11 @@ class CustomLinuxInlineDriver(LockStdinMixin, EventHandlerMixin, LinuxInlineDriv
 
     def run_input_thread(self) -> None:
         """Wait for input, honouring lock_stdin() and custom handlers."""
-        selector = selectors.SelectSelector()
-        selector.register(self.fileno, selectors.EVENT_READ)
 
-        fileno = self.fileno
-        EVENT_READ = selectors.EVENT_READ
+        def on_event(event: Message) -> None:
+            if isinstance(event, events.CursorPosition):
+                self.cursor_origin = (event.x, event.y)
+            else:
+                self.process_message(event)
 
-        parser = XTermParser(self._debug)
-        feed = parser.feed
-        tick = parser.tick
-
-        decode = getincrementaldecoder("utf-8")().decode
-        read = os.read
-
-        def process_selector_events(
-            selector_events: list[tuple[selectors.SelectorKey, int]],
-            final: bool = False,
-        ) -> None:
-            for last, (_, mask) in loop_last(selector_events):
-                if mask & EVENT_READ:
-                    unicode_data = decode(read(fileno, 1024 * 4), final=final and last)
-                    if not unicode_data:
-                        break
-                    filtered = self._dispatch_custom_handlers(unicode_data)
-                    for event in feed(filtered) if filtered else []:
-                        if isinstance(event, events.CursorPosition):
-                            self.cursor_origin = (event.x, event.y)
-                        else:
-                            self.process_message(event)
-            for event in tick():
-                if isinstance(event, events.CursorPosition):
-                    self.cursor_origin = (event.x, event.y)
-                else:
-                    self.process_message(event)
-
-        try:
-            while not self.exit_event.is_set():
-                self._stdin_pause_point()
-                if not self.exit_event.is_set():
-                    process_selector_events(selector.select(0.1))
-            selector.unregister(self.fileno)
-            process_selector_events(selector.select(0.1), final=True)
-        finally:
-            selector.close()
-            try:
-                for _ in feed(""):
-                    pass
-            except ParseError:
-                pass
+        run_linux_input_thread(self, on_event)
