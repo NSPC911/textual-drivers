@@ -20,6 +20,19 @@ from textual_drivers._utils import b64encode, safe
 
 _OSC = "\x1b]"
 _ST = "\x1b\\"
+_DND_DRAG_IN_RE = re.compile(
+    r"t=m:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
+    r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?"
+)
+_DND_DRAG_OUT_RE = re.compile(r"t=o:x=(?P<x>-?\d+):y=(?P<y>-?\d+)")
+_DND_DROP_DATA_RE = re.compile(
+    r"t=r:x=(?P<idx>\d+):m=(?P<more>[01]);(?P<b64>[^\x1b]*)"
+)
+_DROP_RE = re.compile(
+    r"t=M:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
+    r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?"
+)
+_DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
 
 
 def _osc72(meta: str, payload: str | None = None) -> str:
@@ -40,11 +53,7 @@ class DNDDragIn(Message):
 
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=m:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
-            r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
-            data,
-        )
+        m = _DND_DRAG_IN_RE.search(data)
         if not m:
             raise ValueError(f"Invalid t=m: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -63,7 +72,7 @@ class DNDDragOut(Message):
 
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(r"t=o:x=(?P<x>-?\d+):y=(?P<y>-?\d+)", data)
+        m = _DND_DRAG_OUT_RE.search(data)
         if not m:
             raise ValueError(f"Invalid t=o gesture: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -77,10 +86,7 @@ class DNDDropData(Message):
 
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=r:x=(?P<idx>\d+):m=(?P<more>[01]);(?P<b64>[^\x1b]*)",
-            data,
-        )
+        m = _DND_DROP_DATA_RE.search(data)
         if not m:
             raise ValueError(f"Invalid t=r chunk: {data!r}")
         self.idx: int = int(m.group("idx"))
@@ -107,11 +113,7 @@ class Drop(Message):
 
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=M:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
-            r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
-            data,
-        )
+        m = _DROP_RE.search(data)
         if not m:
             raise ValueError(f"Invalid t=M: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -187,6 +189,8 @@ class DNDApp(DrivenApp):
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
         self._drag_op: Literal["copy", "move"] = "copy"
+        self._drag_uri_payload: str = ""
+        self._drag_plain_payload: str = ""
         self._current_drop: Drop | None = None
         self._data_chunks: list[str] = []
         self._data_mime_idx: int = 0
@@ -268,18 +272,22 @@ class DNDApp(DrivenApp):
         self._drag_op = result.op
         self.is_dragging_out = True
         op_int = 1 if result.op == "copy" else 2
-        self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
         uri_list = "\r\n".join(result.uris) + "\r\n"
-        self._write(_osc72("t=p:x=0", b64encode(uri_list)))
+        self._drag_uri_payload = b64encode(uri_list)
         plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
-        self._write(_osc72("t=p:x=1", b64encode(plain)))
-        self._write(
-            _osc72(
-                f"t=p:x=-1:y=0:X={len(result.popup_text)}:Y={result.popup_size}:o=0",
-                b64encode(result.popup_text),
-            )
+        self._drag_plain_payload = b64encode(plain)
+        self._write_many(
+            [
+                _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
+                _osc72("t=p:x=0", self._drag_uri_payload),
+                _osc72("t=p:x=1", self._drag_plain_payload),
+                _osc72(
+                    f"t=p:x=-1:y=0:X={len(result.popup_text)}:Y={result.popup_size}:o=0",
+                    b64encode(result.popup_text),
+                ),
+                _osc72("t=P:x=-1"),
+            ]
         )
-        self._write(_osc72("t=P:x=-1"))
 
     def _on_dnddrop_data(self, event: DNDDropData) -> None:
         if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
@@ -325,7 +333,7 @@ class DNDApp(DrivenApp):
             self.call_from_thread(self._write, _osc72("t=r:o=1"))
 
     def _handle_drag_progress(self, data: str) -> None:
-        m = re.search(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?", data)
+        m = _DRAG_PROGRESS_RE.search(data)
         if not m:
             return
         code = int(m.group("code"))
@@ -343,12 +351,19 @@ class DNDApp(DrivenApp):
 
     def _send_drag_data(self, idx: int) -> None:
         if idx == 0:
-            self._write(
-                _osc72("t=e:y=0:m=0", b64encode("\r\n".join(self._drag_uris) + "\r\n"))
+            payload = self._drag_uri_payload or b64encode(
+                "\r\n".join(self._drag_uris) + "\r\n"
             )
+            self._write(_osc72("t=e:y=0:m=0", payload))
         elif idx == 1:
-            plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
-            self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
+            payload = self._drag_plain_payload
+            if not payload:
+                plain = (
+                    "\n".join(u.removeprefix("file://") for u in self._drag_uris)
+                    + "\n"
+                )
+                payload = b64encode(plain)
+            self._write(_osc72("t=e:y=1:m=0", payload))
 
     # -- User-facing stubs -----------------------------------------------------
 
@@ -415,4 +430,9 @@ class DNDApp(DrivenApp):
 
     def _write(self, seq: str) -> None:
         self._driver.write(seq)
+        self._driver.flush()
+
+    def _write_many(self, seqs: list[str]) -> None:
+        for seq in seqs:
+            self._driver.write(seq)
         self._driver.flush()

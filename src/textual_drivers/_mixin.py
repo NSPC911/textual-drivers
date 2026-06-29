@@ -283,6 +283,9 @@ class EventHandlerMixin:
                     chunk = "\x1b[" + data
                     if data and pattern(chunk):
                         chunks.append(chunk)
+                elif data.startswith("\x1b[") and data.find("\x1b[", 2) == -1:
+                    if pattern(data):
+                        chunks.append(data)
                 else:
                     for part in data.split("\x1b["):
                         if part:

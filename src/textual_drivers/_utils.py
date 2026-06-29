@@ -1,3 +1,4 @@
+import base64
 import time
 from collections.abc import Callable
 from functools import wraps
@@ -108,8 +109,6 @@ def safe(cls: type[MessageLike]) -> Callable[[str], Message | None]:
 
 
 def b64decode(data: str | bytes) -> str:
-    import base64
-
     if isinstance(data, str):
         data = data.encode()
     data += b"=" * (-len(data) % 4)
@@ -117,8 +116,6 @@ def b64decode(data: str | bytes) -> str:
 
 
 def b64encode(data: str | bytes) -> str:
-    import base64
-
     if isinstance(data, str):
         data = data.encode()
     return base64.b64encode(data).decode()
