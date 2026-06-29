@@ -5,10 +5,10 @@ from typing import Generator
 
 from textual.drivers.headless_driver import HeadlessDriver
 
-from textual_drivers._mixin import CustomDriverMixin
+from textual_drivers._mixin import EventHandlerMixin, LockStdinMixin
 
 
-class CustomHeadlessDriver(CustomDriverMixin, HeadlessDriver):
+class CustomHeadlessDriver(LockStdinMixin, EventHandlerMixin, HeadlessDriver):
     """HeadlessDriver with lock_stdin and register_event_handler support.
 
     lock_stdin is a true no-op here — there is no stdin input thread to pause.

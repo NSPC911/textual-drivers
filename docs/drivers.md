@@ -47,14 +47,14 @@ MyApp().run(driver_class=Driver)
 
 ## Using the mixin in your own driver
 
-If you already have a driver subclass, mix in `CustomDriverMixin` **before** the base driver:
+If you already have a driver subclass, mix in your preferred things **before** the base driver:
 
 ```python
-from textual_drivers._mixin import CustomDriverMixin
+from textual_drivers._mixin import LockStdinMixin, EventHandlerMixin
 from textual.drivers.linux_driver import LinuxDriver
 
 
-class MyDriver(CustomDriverMixin, LinuxDriver):
+class MyDriver(LockStdinMixin, EventHandlerMixin, LinuxDriver):
     ...
 ```
 

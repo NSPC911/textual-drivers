@@ -6,7 +6,6 @@ from textual.widget import Widget
 
 from textual_drivers._mixin import (
     BoundedPattern,
-    CustomDriverMixin,
     EventHandlerMixin,
     LockStdinMixin,
     Pattern,
@@ -49,7 +48,6 @@ __all__ = [
     "DrivenApp",
     "BoundedPattern",
     "Pattern",
-    "CustomDriverMixin",
     "EventHandlerMixin",
     "LockStdinMixin",
     "CustomHeadlessDriver",

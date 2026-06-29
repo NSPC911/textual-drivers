@@ -21,7 +21,7 @@ from textual.events import Resize
 from textual.geometry import Size
 from textual.message import Message
 
-from textual_drivers._mixin import CustomDriverMixin
+from textual_drivers._mixin import EventHandlerMixin, LockStdinMixin
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -118,7 +118,7 @@ class _CustomEventMonitor(win32.EventMonitor):
         run_coroutine_threadsafe(self.app._post_message(event), loop=self.loop)
 
 
-class CustomWindowsDriver(CustomDriverMixin, WindowsDriver):
+class CustomWindowsDriver(LockStdinMixin, EventHandlerMixin, WindowsDriver):
     """WindowsDriver with lock_stdin and register_event_handler support."""
 
     def start_application_mode(self) -> None:

@@ -9,10 +9,10 @@ from textual._parser import ParseError
 from textual._xterm_parser import XTermParser
 from textual.drivers.linux_driver import LinuxDriver
 
-from textual_drivers._mixin import CustomDriverMixin
+from textual_drivers._mixin import EventHandlerMixin, LockStdinMixin
 
 
-class CustomLinuxDriver(CustomDriverMixin, LinuxDriver):
+class CustomLinuxDriver(LockStdinMixin, EventHandlerMixin, LinuxDriver):
     """LinuxDriver with lock_stdin and register_event_handler support."""
 
     def run_input_thread(self) -> None:

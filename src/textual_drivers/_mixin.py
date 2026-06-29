@@ -6,10 +6,12 @@ import re
 import sys
 import threading
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, NamedTuple, Protocol, TypeAlias
+from typing import Any, Callable, Generator, NamedTuple, TypeAlias
 
 from textual.message import Message
 from textual.signal import Signal
+
+from textual_drivers._utils import MessageLike
 
 try:
     import fcntl  # ty: ignore[unresolved-import]
@@ -171,10 +173,6 @@ def _find_bounded(data: str, start: str, end: str) -> list[str]:
     return results
 
 
-class MessageEvent(Protocol):
-    def __init__(self, data: str) -> None: ...
-
-
 class EventHandlerMixin:
     """Mixin that adds register_event_handler to Textual drivers.
 
@@ -194,7 +192,7 @@ class EventHandlerMixin:
     def register_event_handler(
         self,
         pattern: Pattern,
-        event_constructor: Callable[[str], MessageEvent | Any],
+        event_constructor: Callable[[str], MessageLike | Any],
         *,
         priority: bool = False,
     ) -> None:
@@ -274,9 +272,4 @@ class EventHandlerMixin:
         return filtered
 
 
-class CustomDriverMixin(LockStdinMixin, EventHandlerMixin):
-    """Convenience mixin combining LockStdinMixin and EventHandlerMixin.
-
-    Equivalent to subclassing both individually.  Use the individual mixins
-    if you only need one of the two features.
-    """
+__all__ = ["LockStdinMixin", "EventHandlerMixin", "BoundedPattern"]
