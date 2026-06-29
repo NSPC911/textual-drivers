@@ -168,8 +168,9 @@ def _find_bounded(data: str, start: str, end: str) -> list[str]:
         e = data.find(end, s + len(start))
         if e == -1:
             break
-        results.append(data[s : e + len(end)])
-        pos = e + len(end)
+        stop = e + len(end)
+        results.append(data[s:stop])
+        pos = stop
     return results
 
 
@@ -255,8 +256,6 @@ class EventHandlerMixin:
         for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
                 if not bounded_possible:
-                    continue
-                if data.find(pattern.start) == -1:
                     continue
                 chunks = _find_bounded(data, pattern.start, pattern.end)
             elif isinstance(pattern, re.Pattern):

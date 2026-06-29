@@ -53,6 +53,17 @@ CHUNKS = [
     "\x1b[<0;80;24m",
 ] * 20_000
 
+MATCHING_CHUNK = (
+    "before"
+    "\x1b]72;t=m:x=1:y=2\x1b\\"
+    "middle"
+    "\x1b]72;t=o:x=3:y=4\x1b\\"
+    "after"
+    "\x1b]72;t=e:x=4:y=0\x1b\\"
+    "tail"
+)
+MATCHING_CHUNKS = [MATCHING_CHUNK] * 20_000
+
 
 def run_workload() -> int:
     driver = make_driver()
@@ -60,6 +71,14 @@ def run_workload() -> int:
     for chunk in CHUNKS:
         total += len(driver._dispatch_custom_handlers(chunk))
     return total
+
+
+def run_bounded_match_workload() -> int:
+    driver = make_driver(DummyMessage)
+    total = 0
+    for chunk in MATCHING_CHUNKS:
+        total += len(driver._dispatch_custom_handlers(chunk))
+    return total + len(driver.sent)
 
 
 def test_bounded_handler_priority_stripping() -> None:
@@ -85,5 +104,13 @@ def test_dispatch_bounded_handlers_without_osc72_matches(
     benchmark: BenchmarkFixture,
 ) -> None:
     result = benchmark(run_workload)
+
+    assert result > 0
+
+
+def test_dispatch_bounded_handlers_with_osc72_matches(
+    benchmark: BenchmarkFixture,
+) -> None:
+    result = benchmark(run_bounded_match_workload)
 
     assert result > 0
