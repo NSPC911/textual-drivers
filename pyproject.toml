@@ -9,7 +9,6 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "textual>=8.2.7",
-    "wrapt>=2.2.1",
 ]
 
 [project.scripts]
