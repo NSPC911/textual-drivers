@@ -24,7 +24,7 @@ class MyApp(DrivenApp):
 | `BoundedPattern(start, end)` | Finds all non-overlapping substrings in the raw data that begin with `start` and end with `end`                       |
 | `re.Pattern`                 | Finds all matches of `pattern.finditer(data)` in the raw data                                                         |
 
-## Glob example
+## Example
 
 Detect the terminal's response to a Primary Device Attributes query (`\x1b[c`), which arrives as `\x1b[?<params>c`:
 
@@ -52,10 +52,9 @@ class MyApp(DrivenApp):
         self.query_one(Label).update(f"Terminal identified: {event.data!r}")
 ```
 
-## BoundedPattern example
+The example above uses a glob pattern. You can also use other pattern types for the same sequence:
 
-Detect the terminal's response to a Primary Device Attributes query, by matching the fixed start and end sentinels:
-
+**BoundedPattern** (match fixed start and end, ignore middle):
 ```python
 from textual_drivers import BoundedPattern
 
@@ -66,18 +65,13 @@ driver.register_event_handler(
 )
 ```
 
-`BoundedPattern` helps if you have sequences that have a fixed start and end content, and do not care about the middle.
-
-## re.Pattern example
-
-Detect the terminal's response to a Primary Device Attributes query with a regex that captures the parameters:
-
+**re.Pattern** (capture groups via regex):
 ```python
 import re
 
 driver.register_event_handler(
     re.compile(r"\x1b\[\?([0-9;]+)c"),
-    CursorPositionMsg,
+    DeviceAttributesReceived,
     priority=True,
 )
 ```

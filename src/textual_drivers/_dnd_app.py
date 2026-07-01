@@ -33,18 +33,18 @@ def _osc72(meta: str, payload: str | None = None) -> str:
 
 class DNDDragIn(Message):
     """Kitty reports a drag is hovering over the app.
-
-    Handler: on_dnddrag_in (DNDApp internal - calls dnd_drag_in_operation).
-    pos is (-1, -1) when the drag leaves the window.
+    p    Handler: on_dnddrag_in (DNDApp internal - calls dnd_drag_in_operation).
+        pos is (-1, -1) when the drag leaves the window.
     """
+
+    re = re.compile(
+        r"t=m:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
+        r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?"
+    )
 
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=m:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
-            r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
-            data,
-        )
+        m = self.re.search(data)
         if not m:
             raise ValueError(f"Invalid t=m: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -61,9 +61,11 @@ class DNDDragOut(Message):
     Handler: on_drag_out (DNDApp internal - calls dnd_drag_out_operation).
     """
 
+    re = re.compile(r"t=o:x=(?P<x>-?\d+):y=(?P<y>-?\d+)")
+
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(r"t=o:x=(?P<x>-?\d+):y=(?P<y>-?\d+)", data)
+        m = self.re.search(data)
         if not m:
             raise ValueError(f"Invalid t=o gesture: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -75,12 +77,11 @@ class DNDDragOut(Message):
 class DNDDropData(Message):
     """One t=r data chunk from kitty. Internal - accumulated by on_dnddrop_data."""
 
+    re = re.compile(r"t=r:x=(?P<idx>\d+):m=(?P<more>[01]);(?P<b64>[^\x1b]*)")
+
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=r:x=(?P<idx>\d+):m=(?P<more>[01]);(?P<b64>[^\x1b]*)",
-            data,
-        )
+        m = self.re.search(data)
         if not m:
             raise ValueError(f"Invalid t=r chunk: {data!r}")
         self.idx: int = int(m.group("idx"))
@@ -105,13 +106,14 @@ class Drop(Message):
     drop was previously rejected by dnd_drag_in_operation.
     """
 
+    re = re.compile(
+        r"t=M:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
+        r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
+    )
+
     def __init__(self, data: str) -> None:
         super().__init__()
-        m = re.search(
-            r"t=M:x=(?P<x>-?\d+):y=(?P<y>-?\d+)"
-            r"(?::X=(?P<X>-?\d+):Y=(?P<Y>-?\d+):o=(?P<o>\d+)[^;]*;(?P<mimes>[^\x1b]*))?",
-            data,
-        )
+        m = self.re.search(data)
         if not m:
             raise ValueError(f"Invalid t=M: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
@@ -168,6 +170,15 @@ class DNDDragOutOperation(NamedTuple):
     """Text to show in the drag icon popup. Should be short and descriptive."""
     popup_size: int = 3
     """Size of the popup text. The popup text's size is inversely proportional to this value."""
+
+
+class DNDDragInOperation(NamedTuple):
+    accepted: bool
+    """Whether the drag-in is accepted or rejected."""
+    op: Literal["copy", "move", "either"]
+    """The operation to allow for the drag-in."""
+    mimes: list[str]
+    """List of MIME types to accept for the drag-in."""
 
 
 # -- App -----------------------------------------------------------------------
@@ -227,8 +238,7 @@ class DNDApp(DrivenApp):
             lambda _: None,
             priority=True,
         )
-        self._write(_osc72("t=o:x=1"))
-        self._write(_osc72("t=a", "*/*"))
+        self._write(_osc72("t=o:x=1"), _osc72("t=a", "*/*"))
 
     def _set_drag_in(self, accepted: bool | None) -> None:
         self.is_dragging_in = accepted is True
@@ -242,18 +252,20 @@ class DNDApp(DrivenApp):
             self._set_drag_in(None)
             self._write(_osc72("t=m:o=0"))
             return
-        returned = self.dnd_drag_in_operation(event)
-        if isawaitable(returned):
-            accepted = await returned
+        result = self.dnd_drag_in_operation(event)
+        if isawaitable(result):
+            result = await result
         else:
-            accepted = returned
-        if not accepted:
+            result = result
+        if isinstance(result, bool):
+            result = DNDDragInOperation(accepted=result, op="either", mimes=event.mimes)
+        if not result.accepted:
             self._set_drag_in(False)
             self._write(_osc72("t=m:o=0"))
             return
         self._set_drag_in(True)
-        op_int = 1 if event.op in ("copy", "either") else 2
-        self._write(_osc72(f"t=m:o={op_int}", " ".join(event.mimes)))
+        op_int = 1 if result.op in ("copy", "either") else 0
+        self._write(_osc72(f"t=m:o={op_int}", " ".join(result.mimes)))
 
     async def _on_dnddrag_out(self, event: DNDDragOut) -> None:
         returned = self.dnd_drag_out_operation(event.pos)
@@ -268,18 +280,18 @@ class DNDApp(DrivenApp):
         self._drag_op = result.op
         self.is_dragging_out = True
         op_int = 1 if result.op == "copy" else 2
-        self._write(_osc72(f"t=o:o={op_int}", "text/uri-list text/plain"))
         uri_list = "\r\n".join(result.uris) + "\r\n"
-        self._write(_osc72("t=p:x=0", b64encode(uri_list)))
         plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
-        self._write(_osc72("t=p:x=1", b64encode(plain)))
         self._write(
+            _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
+            _osc72("t=p:x=0", b64encode(uri_list)),
+            _osc72("t=p:x=1", b64encode(plain)),
             _osc72(
                 f"t=p:x=-1:y=0:X={len(result.popup_text)}:Y={result.popup_size}:o=0",
                 b64encode(result.popup_text),
-            )
+            ),
+            _osc72("t=P:x=-1"),
         )
-        self._write(_osc72("t=P:x=-1"))
 
     def _on_dnddrop_data(self, event: DNDDropData) -> None:
         if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
@@ -322,10 +334,15 @@ class DNDApp(DrivenApp):
             assembled = raw
         self.post_message(DropData(drop, assembled, mime))
         if close:
-            self.call_from_thread(self._write, _osc72("t=r:o=1"))
+            self.call_from_thread(self.close_dnd)
 
     def _handle_drag_progress(self, data: str) -> None:
-        m = re.search(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?", data)
+        self._drag_progress_re = getattr(
+            self,
+            "_drag_progress_re",
+            re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?"),
+        )
+        m = re.search(self._drag_progress_re, data)
         if not m:
             return
         code = int(m.group("code"))
@@ -368,9 +385,11 @@ class DNDApp(DrivenApp):
         """Return DNDDragOutOperation to start a drag-out, or None to cancel."""  # noqa: DOC201
         return None
 
-    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
+    async def dnd_drag_in_operation(
+        self, event: DNDDragIn
+    ) -> DNDDragInOperation | bool:
         """Return True to accept the incoming drag, False to reject."""  # noqa: DOC201
-        return True
+        return DNDDragInOperation(accepted=True, op="either", mimes=event.mimes)
 
     # -- Helpers ---------------------------------------------------------------
 
@@ -402,8 +421,7 @@ class DNDApp(DrivenApp):
         self.close_dnd()
         if self.is_dragging_out:
             self._write(_osc72("t=E:y=-1"))
-        self._write(_osc72("t=o:x=2"))
-        self._write(_osc72("t=A", ""))
+        self._write(_osc72("t=o:x=2"), _osc72("t=A", ""))
 
     async def action_quit(self) -> None:
         self.stop_kitty()
@@ -413,6 +431,7 @@ class DNDApp(DrivenApp):
         self.stop_kitty()
         return super()._fatal_error()
 
-    def _write(self, seq: str) -> None:
-        self._driver.write(seq)
+    def _write(self, *lines: str) -> None:
+        for seq in lines:
+            self._driver.write(seq)
         self._driver.flush()
