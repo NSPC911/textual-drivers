@@ -168,9 +168,7 @@ def _find_bounded(data: str, start: str, end: str) -> list[str]:
         e = data.find(end, s + len(start))
         if e == -1:
             break
-        stop = e + len(end)
-        results.append(data[s:stop])
-        pos = stop
+        results.append(data[s:(pos := e + len(end))])
     return results
 
 
