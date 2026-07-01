@@ -53,6 +53,7 @@ class _CustomEventMonitor(win32.EventMonitor):
         try:
             read_count = DWORD(0)
             hIn = GetStdHandle(STD_INPUT_HANDLE)
+            input_handles = [hIn]
 
             MAX_EVENTS = 1024
             arrtype = INPUT_RECORD * MAX_EVENTS
@@ -67,18 +68,18 @@ class _CustomEventMonitor(win32.EventMonitor):
                 for event in parser.tick():
                     self.process_event(event)
 
-                if wait_for_handles([hIn], 100) is None:
+                if wait_for_handles(input_handles, 100) is None:
                     continue
 
                 ReadConsoleInputW(
                     hIn, byref(input_records), MAX_EVENTS, byref(read_count)
                 )
-                read_input_records = input_records[: read_count.value]
 
                 del keys[:]
                 new_size: tuple[int, int] | None = None
 
-                for input_record in read_input_records:
+                for index in range(read_count.value):
+                    input_record = input_records[index]
                     event_type = input_record.EventType
                     if event_type == _KEY_EVENT:
                         key_event = input_record.Event.KeyEvent

@@ -151,6 +151,27 @@ def test_mixed_handlers_preserve_order_and_priority_stripping() -> None:
     ]
 
 
+def test_non_bounded_prefilters_preserve_matches() -> None:
+    driver = DummyDriver()
+    driver.register_event_handler(re.compile(r"mouse:\d+,\d+"), DummyMessage)
+    driver.register_event_handler("\x1b[<35;*M", DummyMessage)
+
+    assert driver._dispatch_custom_handlers("mouse:12,34") == "mouse:12,34"
+    assert driver._dispatch_custom_handlers("\x1b[<35;120;44M") == "\x1b[<35;120;44M"
+    assert [event.data for event in driver.sent] == [
+        "mouse:12,34",
+        "\x1b[<35;120;44M",
+    ]
+
+
+def test_regex_prefilter_skips_alternation() -> None:
+    driver = DummyDriver()
+    driver.register_event_handler(re.compile(r"mouse:\d+,\d+|plain"), DummyMessage)
+
+    assert driver._dispatch_custom_handlers("plain") == "plain"
+    assert [event.data for event in driver.sent] == ["plain"]
+
+
 def test_dispatch_bounded_handlers_without_osc72_matches(
     benchmark: BenchmarkFixture,
 ) -> None:
