@@ -187,6 +187,8 @@ class EventHandlerMixin:
         self._event_handlers: list[
             tuple[HandlerPattern, Callable[[str], object], bool]
         ] = []
+        self._bounded_handler_count: int = 0
+        self._bounded_prefixes: set[str] = set()
         self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
 
     def register_event_handler(
@@ -216,6 +218,9 @@ class EventHandlerMixin:
             ).match
         else:
             handler_pattern = pattern
+            if isinstance(pattern, BoundedPattern):
+                self._bounded_handler_count += 1
+                self._bounded_prefixes.add(pattern.start[:2])
         self._event_handlers.append((handler_pattern, event_constructor, priority))
 
     def _dispatch_custom_handlers(self, data: str) -> str:
@@ -237,8 +242,21 @@ class EventHandlerMixin:
         self.raw_data_signal.publish(data)
 
         to_strip: list[str] = []
+        bounded_possible = True
+        if self._bounded_prefixes:
+            bounded_possible = False
+            for prefix in self._bounded_prefixes:
+                if prefix in data:
+                    bounded_possible = True
+                    break
+        if not bounded_possible and self._bounded_handler_count == len(
+            self._event_handlers
+        ):
+            return data
         for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
+                if not bounded_possible:
+                    continue
                 if data.find(pattern.start) == -1:
                     continue
                 chunks = _find_bounded(data, pattern.start, pattern.end)
