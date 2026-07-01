@@ -28,15 +28,9 @@ MyApp().run()
 
 ## Documentation
 
-Full docs are on the [wiki](../../wiki):
+Full docs are on the [wiki](https://github.com/NSPC911/textual-drivers/wiki):
 
-- [Drivers](../../wiki/drivers): driver classes, `DrivenApp`, and mixin usage
-- [lock_stdin](../../wiki/lock-stdin): exclusive stdin ownership for terminal queries and subprocesses
-- [register_event_handler](../../wiki/register-event-handler): pattern-based raw stdin → Textual message routing
-- [DnD](../../wiki/dnd): kitty drag-and-drop protocol via `DNDApp`
-
-The `docs/` folder in this repo mirrors the wiki and can be pushed to it with:
-
-```
-./sync-wiki.sh
-```
+- [Drivers](https://github.com/NSPC911/textual-drivers/wiki/drivers): driver classes, `DrivenApp`, and mixin usage
+- [lock_stdin](https://github.com/NSPC911/textual-drivers/wiki/lock-stdin): exclusive stdin ownership for terminal queries and subprocesses
+- [register_event_handler](https://github.com/NSPC911/textual-drivers/wiki/register-event-handler): pattern-based raw stdin -> Textual message routing
+- [Drag 'n Drop](https://github.com/NSPC911/textual-drivers/wiki/dnd): kitty drag-and-drop protocol via `DNDApp` (the main reason for this package)

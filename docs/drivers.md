@@ -58,6 +58,8 @@ class MyDriver(LockStdinMixin, EventHandlerMixin, LinuxDriver):
     ...
 ```
 
+Use this approach if your driver already handles platform-specific logic but needs event hooks or stdin locking features.
+
 The mixin must appear before the driver class in the MRO so that `__init__` chains correctly via `super()`. You must also call `self._stdin_pause_point()` at the start of your input-thread loop for [`lock_stdin`](lock-stdin) to work.
 
 Feel free to contribute extra mixins for other features.

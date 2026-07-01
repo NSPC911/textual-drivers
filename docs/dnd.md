@@ -43,7 +43,7 @@ class DragOutFinished:
 
 ### Internal (do not handle directly)
 
-`DNDDragIn`, `DNDDragOut`, `DNDDropData` and `DNDDragOutOperation` are used internally by `DNDApp` and should not be handled in subclasses.
+`DNDDragIn`, `DNDDragOut` and `DNDDropData` are used internally by `DNDApp` and should not be handled in subclasses.
 
 ## Reactive attributes
 
@@ -84,23 +84,14 @@ class DNDApp(DrivenApp):
         """Return DNDDragOutOperation to start a drag-out, or None to cancel."""
         ...
 
-    async def dnd_drag_in_operation(self, event: DNDDragIn) -> bool:
-        """Return True to accept the incoming drag, False to reject."""
+    async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
+        """Return DNDDragInOperation to customize the drag-in, or bool for simple accept/reject."""
         ...
 ```
 
 ## Requesting data
 
-When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You need to ask for the data
-
-```py
-async def on_drop(self, event: Drop) -> None:
-    idx = event.mimes.index("text/uri-list")
-    # must request here
-    self.request_data(event, idx)
-```
-
-`DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`. Assembly (base64 decode) runs in a background thread, so large binary MIME types like `image/png` do not block the UI.
+When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`. Assembly (base64 decode) runs in a background thread, so large binary MIME types like `image/png` do not block the UI.
 
 If no data arrives within 30 seconds, `DropData` is posted with `data=b""` as a timeout sentinel — check for this before processing.
 
@@ -122,7 +113,7 @@ If you need multiple data formats, you must include `close=False` in `request_da
 @work
 async def on_drop(self, event: Drop) -> None:
     self._requested: list[str] = []
-    self.request_data(event, 0)   # fetch first MIME, leave session open
+    self.request_data(event, 0, close=False)   # fetch first MIME, leave session open
 
 @work
 async def on_drop_data(self, event: DropData) -> None:
@@ -132,8 +123,8 @@ async def on_drop_data(self, event: DropData) -> None:
         self.close_dnd()
         return
     # optionally ask the user which to fetch next, then:
-    self.request_data(event.drop_event, event.drop_event.mimes.index(remaining[0]), close=False)
-    # call self.close_dnd() once truly done
+    idx = event.drop_event.mimes.index(remaining[0])
+    self.request_data(event.drop_event, idx, close=False)
 ```
 
 ## Running the bundled demos
