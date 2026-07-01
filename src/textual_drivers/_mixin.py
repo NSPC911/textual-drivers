@@ -203,6 +203,8 @@ def _glob_prefilter(pattern: str) -> str:
 
 def _regex_prefilter(pattern: re.Pattern[str]) -> str:
     """Return a required leading literal for simple regular expressions."""  # noqa: DOC201
+    if pattern.flags & re.IGNORECASE:
+        return ""
     source = pattern.pattern
     if "|" in source:
         return ""
