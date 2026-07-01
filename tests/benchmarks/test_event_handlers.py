@@ -22,7 +22,7 @@ class DummyMessage(Message):
 class DummyDriver(EventHandlerMixin):
     def __init__(self) -> None:
         self._event_handlers = []
-        self._bounded_handler_count = 0
+        self._has_non_bounded_handlers = False
         self._bounded_prefixes = set()
         self.raw_data_signal = RawSignal()  # ty: ignore[invalid-assignment]
         self._app = object()

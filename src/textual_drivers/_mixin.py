@@ -187,7 +187,7 @@ class EventHandlerMixin:
         self._event_handlers: list[
             tuple[HandlerPattern, Callable[[str], object], bool]
         ] = []
-        self._bounded_handler_count: int = 0
+        self._has_non_bounded_handlers: bool = False
         self._bounded_prefixes: set[str] = set()
         self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
 
@@ -219,8 +219,9 @@ class EventHandlerMixin:
         else:
             handler_pattern = pattern
             if isinstance(pattern, BoundedPattern):
-                self._bounded_handler_count += 1
                 self._bounded_prefixes.add(pattern.start[:2])
+            else:
+                self._has_non_bounded_handlers = True
         self._event_handlers.append((handler_pattern, event_constructor, priority))
 
     def _dispatch_custom_handlers(self, data: str) -> str:
@@ -249,9 +250,7 @@ class EventHandlerMixin:
                 if prefix in data:
                     bounded_possible = True
                     break
-        if not bounded_possible and self._bounded_handler_count == len(
-            self._event_handlers
-        ):
+        if not bounded_possible and not self._has_non_bounded_handlers:
             return data
         for pattern, constructor, priority in self._event_handlers:
             if isinstance(pattern, BoundedPattern):
