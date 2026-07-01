@@ -6,7 +6,13 @@ from textual import work
 from textual.app import ComposeResult
 from textual.widgets import Footer, Header, Label, Log, Static
 
-from textual_drivers.dnd import DNDApp, DNDDragIn, Drop, DropData
+from textual_drivers.dnd import (
+    DNDApp,
+    DNDDragIn,
+    DNDDragInOperation,
+    Drop,
+    DropData,
+)
 
 
 class DragInApp(DNDApp):
@@ -60,6 +66,15 @@ class DragInApp(DNDApp):
                 f"Operation: {event.op}  |  MIME types: {mime_str}"
             )
 
+    async def dnd_drag_in_operation(
+        self, event: DNDDragIn
+    ) -> DNDDragInOperation | bool:
+        return DNDDragInOperation(
+            accepted=event.pos in self.query_one("#drop-zone", Static).content_region,
+            op="either",
+            mimes=event.mimes,
+        )
+
     @work
     async def on_drop(self, event: Drop) -> None:
         zone = self.query_one("#drop-zone", Static)
@@ -112,7 +127,7 @@ class DragInApp(DNDApp):
         self._requested_mimes.append(reqmime)
         self.request_data(event.drop_event, all_mimes.index(reqmime), close=False)
 
-    def Log(self, msg: str) -> None:
+    def Log(self, msg: str) -> None:  # noqa: N802
         self.query_one("#log", Log).write_line(msg)
 
     def _log_(self, msg: str) -> None:
