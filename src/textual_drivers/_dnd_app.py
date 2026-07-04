@@ -20,6 +20,7 @@ from textual_drivers._utils import b64encode, safe
 
 _OSC = "\x1b]"
 _ST = "\x1b\\"
+_DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
 
 
 def _osc72(meta: str, payload: str | None = None) -> str:
@@ -337,23 +338,18 @@ class DNDApp(DrivenApp):
             self.call_from_thread(self.close_dnd)
 
     def _handle_drag_progress(self, data: str) -> None:
-        self._drag_progress_re = getattr(
-            self,
-            "_drag_progress_re",
-            re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?"),
-        )
-        m = re.search(self._drag_progress_re, data)
+        m = _DRAG_PROGRESS_RE.search(data)
         if not m:
             return
-        code = int(m.group("code"))
-        if code == 4:
+        code = m.group("code")
+        if code == "4":
             was_active = self.is_dragging_out
             self.is_dragging_out = False
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
                 self.post_message(DragOutFinished(cancelled=m.group("y") == "1"))
-        elif code == 5:
+        elif code == "5":
             y = m.group("y")
             if y is not None:
                 self._send_drag_data(int(y))

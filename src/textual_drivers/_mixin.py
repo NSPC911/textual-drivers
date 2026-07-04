@@ -6,7 +6,7 @@ import re
 import sys
 import threading
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, NamedTuple, TypeAlias
+from typing import Any, Callable, Generator, Literal, NamedTuple, TypeAlias
 
 from textual.message import Message
 from textual.signal import Signal
@@ -156,6 +156,14 @@ Pattern: TypeAlias = str | BoundedPattern | re.Pattern[str]
 GlobMatcher: TypeAlias = Callable[[str], re.Match[str] | None]
 HandlerPattern: TypeAlias = BoundedPattern | re.Pattern[str] | GlobMatcher
 EventHandler: TypeAlias = tuple[HandlerPattern, Callable[[str], object], bool]
+RegexHandler: TypeAlias = tuple[
+    Literal[0], re.Pattern[str], Callable[[str], object], bool, str
+]
+GlobHandler: TypeAlias = tuple[Literal[1], GlobMatcher, Callable[[str], object], bool, str]
+NonBoundedHandler: TypeAlias = RegexHandler | GlobHandler
+
+_HANDLER_REGEX: Literal[0] = 0
+_HANDLER_GLOB: Literal[1] = 1
 
 
 def _find_bounded(
@@ -179,6 +187,48 @@ def _find_bounded(
     return results
 
 
+def _glob_prefilter(pattern: str) -> str:
+    """Return a literal substring that must be present for *pattern* to match."""  # noqa: DOC201
+    wildcard_index = len(pattern)
+    for index, character in enumerate(pattern):
+        if character in "*?":
+            wildcard_index = index
+            break
+        if character == "[" and "]" in pattern[index + 1 :]:
+            wildcard_index = index
+            break
+    literal_prefix = pattern[:wildcard_index]
+    return literal_prefix.removeprefix("\x1b[")
+
+
+def _regex_prefilter(pattern: re.Pattern[str]) -> str:
+    """Return a required leading literal for simple regular expressions."""  # noqa: DOC201
+    if pattern.flags & re.IGNORECASE:
+        return ""
+    source = pattern.pattern
+    if "|" in source:
+        return ""
+    index = 1 if source.startswith("^") else 0
+    chars: list[str] = []
+    while index < len(source):
+        character = source[index]
+        if character == "\\":
+            next_index = index + 1
+            if next_index >= len(source):
+                break
+            escaped = source[next_index]
+            if escaped.isalnum():
+                break
+            chars.append(escaped)
+            index += 2
+            continue
+        if character in ".^$*+?{}[]()|":
+            break
+        chars.append(character)
+        index += 1
+    return "".join(chars)
+
+
 class EventHandlerMixin:
     """Mixin that adds register_event_handler to Textual drivers.
 
@@ -191,7 +241,7 @@ class EventHandlerMixin:
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._event_handlers: list[EventHandler] = []
-        self._non_bounded_handlers: list[EventHandler] = []
+        self._non_bounded_handlers: list[NonBoundedHandler] = []
         self._has_non_bounded_handlers: bool = False
         self._bounded_prefixes: set[str] = set()
         self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
@@ -218,23 +268,28 @@ class EventHandlerMixin:
                 double-dispatch.
         """
         if isinstance(pattern, str):
-            handler_pattern: HandlerPattern = re.compile(
-                fnmatch.translate(pattern)
-            ).match
-            bounded = False
+            glob_pattern = re.compile(fnmatch.translate(pattern)).match
+            handler = (glob_pattern, event_constructor, priority)
             self._has_non_bounded_handlers = True
+            self._event_handlers.append(handler)
+            self._non_bounded_handlers.append(
+                (_HANDLER_GLOB, glob_pattern, event_constructor, priority, _glob_prefilter(pattern))
+            )
+        elif isinstance(pattern, BoundedPattern):
+            self._bounded_prefixes.add(pattern.start[:2])
+            self._event_handlers.append((pattern, event_constructor, priority))
         else:
-            handler_pattern = pattern
-            if isinstance(pattern, BoundedPattern):
-                bounded = True
-                self._bounded_prefixes.add(pattern.start[:2])
-            else:
-                bounded = False
-                self._has_non_bounded_handlers = True
-        handler = (handler_pattern, event_constructor, priority)
-        self._event_handlers.append(handler)
-        if not bounded:
-            self._non_bounded_handlers.append(handler)
+            self._has_non_bounded_handlers = True
+            self._event_handlers.append((pattern, event_constructor, priority))
+            self._non_bounded_handlers.append(
+                (
+                    _HANDLER_REGEX,
+                    pattern,
+                    event_constructor,
+                    priority,
+                    _regex_prefilter(pattern),
+                )
+            )
 
     def _dispatch_custom_handlers(self, data: str) -> str:
         """Dispatch registered handlers and return filtered data.
@@ -254,7 +309,9 @@ class EventHandlerMixin:
 
         self.raw_data_signal.publish(data)
 
-        to_strip: list[str] = []
+        if not self._event_handlers:
+            return data
+
         bounded_possible = True
         if self._bounded_prefixes:
             bounded_possible = False
@@ -264,43 +321,111 @@ class EventHandlerMixin:
                     break
         if not bounded_possible and not self._has_non_bounded_handlers:
             return data
-        event_handlers = (
-            self._event_handlers if bounded_possible else self._non_bounded_handlers
-        )
-        for pattern, constructor, priority in event_handlers:
-            if isinstance(pattern, BoundedPattern):
-                first_start = data.find(pattern.start)
-                if first_start == -1:
-                    continue
-                chunks = _find_bounded(data, pattern.start, pattern.end, first_start)
-            elif isinstance(pattern, re.Pattern):
-                chunks = [m.group() for m in pattern.finditer(data)]
-            else:
-                chunks = []
-                if "\x1b[" not in data:
-                    chunk = "\x1b[" + data
-                    if data and pattern(chunk):
-                        chunks.append(chunk)
+        to_strip: list[str] | None = None
+        if bounded_possible:
+            for pattern, constructor, priority in self._event_handlers:
+                if isinstance(pattern, BoundedPattern):
+                    first_start = data.find(pattern.start)
+                    if first_start == -1:
+                        continue
+                    chunks = _find_bounded(data, pattern.start, pattern.end, first_start)
+                    for chunk in chunks:
+                        if priority:
+                            if to_strip is None:
+                                to_strip = []
+                            to_strip.append(chunk)
+                        event = constructor(chunk)
+                        if isinstance(event, Message):
+                            event.set_sender(self._app)  # type: ignore[attr-defined]
+                            self.send_message(event)  # type: ignore[attr-defined]
+                elif isinstance(pattern, re.Pattern):
+                    for match in pattern.finditer(data):
+                        chunk = match.group()
+                        if priority:
+                            if to_strip is None:
+                                to_strip = []
+                            to_strip.append(chunk)
+                        event = constructor(chunk)
+                        if isinstance(event, Message):
+                            event.set_sender(self._app)  # type: ignore[attr-defined]
+                            self.send_message(event)  # type: ignore[attr-defined]
                 else:
-                    for part in data.split("\x1b["):
-                        if part:
-                            chunk = "\x1b[" + part
-                            if pattern(chunk):
-                                chunks.append(chunk)
+                    if "\x1b[" not in data:
+                        chunk = "\x1b[" + data
+                        if data and pattern(chunk):
+                            if priority:
+                                if to_strip is None:
+                                    to_strip = []
+                                to_strip.append(chunk)
+                            event = constructor(chunk)
+                            if isinstance(event, Message):
+                                event.set_sender(self._app)  # type: ignore[attr-defined]
+                                self.send_message(event)  # type: ignore[attr-defined]
+                    else:
+                        for part in data.split("\x1b["):
+                            if part:
+                                chunk = "\x1b[" + part
+                                if pattern(chunk):
+                                    if priority:
+                                        if to_strip is None:
+                                            to_strip = []
+                                        to_strip.append(chunk)
+                                    event = constructor(chunk)
+                                    if isinstance(event, Message):
+                                        event.set_sender(self._app)  # type: ignore[attr-defined]
+                                        self.send_message(event)  # type: ignore[attr-defined]
+        else:
+            for (
+                handler_type,
+                pattern,
+                constructor,
+                priority,
+                prefilter,
+            ) in self._non_bounded_handlers:
+                if handler_type == _HANDLER_REGEX:
+                    if prefilter and prefilter not in data:
+                        continue
+                    for match in pattern.finditer(data):
+                        chunk = match.group()
+                        if priority:
+                            if to_strip is None:
+                                to_strip = []
+                            to_strip.append(chunk)
+                        event = constructor(chunk)
+                        if isinstance(event, Message):
+                            event.set_sender(self._app)  # type: ignore[attr-defined]
+                            self.send_message(event)  # type: ignore[attr-defined]
+                    continue
+                else:
+                    assert not isinstance(pattern, re.Pattern)
+                    if prefilter and prefilter not in data:
+                        continue
+                    if "\x1b[" not in data:
+                        chunk = "\x1b[" + data
+                        if data and pattern(chunk):
+                            if priority:
+                                if to_strip is None:
+                                    to_strip = []
+                                to_strip.append(chunk)
+                            event = constructor(chunk)
+                            if isinstance(event, Message):
+                                event.set_sender(self._app)  # type: ignore[attr-defined]
+                                self.send_message(event)  # type: ignore[attr-defined]
+                    else:
+                        for part in data.split("\x1b["):
+                            if part:
+                                chunk = "\x1b[" + part
+                                if pattern(chunk):
+                                    if priority:
+                                        if to_strip is None:
+                                            to_strip = []
+                                        to_strip.append(chunk)
+                                    event = constructor(chunk)
+                                    if isinstance(event, Message):
+                                        event.set_sender(self._app)  # type: ignore[attr-defined]
+                                        self.send_message(event)  # type: ignore[attr-defined]
 
-            if not chunks:
-                continue
-
-            if priority:
-                to_strip.extend(chunks)
-
-            for chunk in chunks:
-                event = constructor(chunk)
-                if isinstance(event, Message):
-                    event.set_sender(self._app)  # type: ignore[attr-defined]
-                    self.send_message(event)  # type: ignore[attr-defined]
-
-        if not to_strip:
+        if to_strip is None:
             return data
 
         filtered = data
