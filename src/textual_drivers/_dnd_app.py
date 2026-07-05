@@ -166,7 +166,7 @@ class DragOutFinished(Message):
 class DNDDragOutOperation(NamedTuple):
     uris: list[str]
     """URIs to offer for dragging out. Must be file://"""
-    op: Literal["copy", "move"]
+    op: Literal["copy", "move", "either"]
     popup_text: str
     """Text to show in the drag icon popup. Should be short and descriptive."""
     popup_size: int = 3
@@ -198,7 +198,7 @@ class DNDApp(DrivenApp):
 
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
-        self._drag_op: Literal["copy", "move"] = "copy"
+        self._drag_op: Literal["copy", "move", "either"] = "copy"
         self._current_drop: Drop | None = None
         self._data_chunks: list[str] = []
         self._data_mime_idx: int = 0
@@ -265,7 +265,13 @@ class DNDApp(DrivenApp):
             self._write(_osc72("t=m:o=0"))
             return
         self._set_drag_in(True)
-        op_int = 1 if result.op in ("copy", "either") else 0
+        # kitty only accepts a concrete operation (1=copy, 2=move) in the
+        # t=m reply; anything else is treated as a rejection. For "either",
+        # pick whichever operation the drag source actually offers.
+        op = result.op
+        if op == "either":
+            op = "move" if event.op == "move" else "copy"
+        op_int = 2 if op == "move" else 1
         self._write(_osc72(f"t=m:o={op_int}", " ".join(result.mimes)))
 
     async def _on_dnddrag_out(self, event: DNDDragOut) -> None:
@@ -280,7 +286,7 @@ class DNDApp(DrivenApp):
         self._drag_uris = result.uris
         self._drag_op = result.op
         self.is_dragging_out = True
-        op_int = 1 if result.op == "copy" else 2
+        op_int = {"copy": 1, "move": 2, "either": 3}[result.op]
         uri_list = "\r\n".join(result.uris) + "\r\n"
         plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
         self._write(
@@ -406,15 +412,24 @@ class DNDApp(DrivenApp):
         self._close_after_data = close
         self._write(_osc72(f"t=r:x={index + 1}"))
 
-    def close_dnd(self) -> None:
-        """Close the current drop session, releasing kitty's drop state."""
-        self._write(_osc72("t=r:o=1"))
+    def close_dnd(self, op: Literal["copy", "move", "cancel"] | None = None) -> None:
+        """Close the current drop session, releasing kitty's drop state.
+
+        op is the concluded operation reported back to the drag source.
+        Defaults to the operation of the drop being closed, so a "move"
+        drop tells the source to remove the originals.
+        """
+        if op is None:
+            op = self._current_drop.op if self._current_drop is not None else "copy"
+        op_int = {"cancel": 0, "copy": 1, "move": 2}[op]
+        self._current_drop = None
+        self._write(_osc72(f"t=r:o={op_int}"))
 
     @on(events.Unmount)
     @on(events.Hide)
     @on(ExitApp)
     def stop_kitty(self) -> None:
-        self.close_dnd()
+        self.close_dnd("cancel")
         if self.is_dragging_out:
             self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"), _osc72("t=A", ""))

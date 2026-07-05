@@ -89,6 +89,12 @@ class DNDApp(DrivenApp):
         ...
 ```
 
+### Operations
+
+`DNDDragOutOperation.op` accepts `"copy"`, `"move"` or `"either"`. Prefer `"either"` — it lets the drop target pick, so both copy-only and move-only targets can accept the drag.
+
+`DNDDragInOperation.op` also accepts all three, but the kitty protocol requires a concrete operation in the hover reply: `"either"` resolves to whichever operation the drag source offers (preferring copy). If the source only offers `"move"` and you reply `"copy"` (or vice versa), the drop is refused — check `event.op` if you need to reject incompatible drags yourself.
+
 ## Requesting data
 
 When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`. Assembly (base64 decode) runs in a background thread, so large binary MIME types like `image/png` do not block the UI.
@@ -107,7 +113,7 @@ async def on_drop(self, event: Drop) -> None:
 
 ### Multiple MIMEs (explicit close)
 
-If you need multiple data formats, you must include `close=False` in `request_data` to keep the session open across multiple requests, and call `close_dnd()` when you're truly done:
+If you need multiple data formats, you must include `close=False` in `request_data` to keep the session open across multiple requests, and call `close_dnd()` when you're truly done. `close_dnd` reports the concluded operation back to the drag source (defaulting to the drop's operation, so a `"move"` drop tells the source to remove the originals); pass `"cancel"` to abort:
 
 ```python
 @work

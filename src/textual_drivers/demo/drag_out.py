@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.textual_drivers._dnd_app import Drop, DropData
 from textual.app import ComposeResult
+from textual.geometry import Offset
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
@@ -63,7 +65,7 @@ class DragOutApp(DNDApp):
             file_list.add_option(Selection(label, str(entry), initial_state=False))
 
     async def dnd_drag_out_operation(
-        self, pos: tuple[int, int]
+        self, pos: Offset
     ) -> DNDDragOutOperation | None:
         if pos not in self.query_one("#file-list", SelectionList).content_region:
             return
@@ -85,6 +87,14 @@ class DragOutApp(DNDApp):
 
     def _log(self, msg: str) -> None:
         self.query_one("#log", Log).write_line(msg)
+
+    async def on_drop(self, event: Drop) -> None:
+        self._log(f"Dropped {event!r}")
+        self._log("Don't drop here!")
+        self.request_data(event, 0, close=True)
+
+    def on_drop_data(self, event: DropData) -> None:
+        self._log(f"Drop data: {event!r}")
 
 
 if __name__ == "__main__":
