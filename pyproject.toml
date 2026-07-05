@@ -1,6 +1,6 @@
 [project]
 name = "textual-drivers"
-version = "0.6.0"
+version = "0.6.1"
 description = "Drop-in Textual drivers with lock_stdin, register_event_handler, and kitty DnD support"
 readme = "README.md"
 authors = [
