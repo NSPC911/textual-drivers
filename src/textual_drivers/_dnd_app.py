@@ -34,7 +34,7 @@ def _osc72(meta: str, payload: str | None = None) -> str:
 
 class DNDDragIn(Message):
     """Kitty reports a drag is hovering over the app.
-    p    Handler: on_dnddrag_in (DNDApp internal - calls dnd_drag_in_operation).
+        Handler: on_dnddrag_in (DNDApp internal, calls dnd_drag_in_operation).
         pos is (-1, -1) when the drag leaves the window.
     """
 
@@ -49,6 +49,11 @@ class DNDDragIn(Message):
         if not m:
             raise ValueError(f"Invalid t=m: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
+        self.real_pos: Offset | None = (
+            Offset(int(m.group("X")), int(m.group("Y")))
+            if m.group("X") and m.group("Y")
+            else None
+        )
         o = int(m.group("o")) if m.group("o") else 0
         self.op: Literal["copy", "move", "either"] | None = (
             "copy" if o == 1 else "move" if o == 2 else "either"
@@ -118,6 +123,11 @@ class Drop(Message):
         if not m:
             raise ValueError(f"Invalid t=M: {data!r}")
         self.pos: Offset = Offset(int(m.group("x")), int(m.group("y")))
+        self.real_pos: Offset | None = (
+            Offset(int(m.group("X")), int(m.group("Y")))
+            if m.group("X") and m.group("Y")
+            else None
+        )
         self.rejected: bool = m.group("o") is None
         o = int(m.group("o")) if m.group("o") else 1
         self.op: Literal["copy", "move"] = "copy" if o == 1 else "move"

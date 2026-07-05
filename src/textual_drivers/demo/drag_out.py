@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.textual_drivers._dnd_app import Drop, DropData
 from textual.app import ComposeResult
 from textual.geometry import Offset
 from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
+from src.textual_drivers._dnd_app import Drop, DropData
 from textual_drivers.dnd import DNDApp, DNDDragOutOperation, DragOutFinished
 
 
