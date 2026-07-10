@@ -187,7 +187,6 @@ class DNDDragInOperation(NamedTuple):
     accepted: bool
     """Whether the drag-in is accepted or rejected."""
     op: Literal["copy", "move", "either"]
-    """The operation to allow for the drag-in."""
     mimes: list[str]
     """List of MIME types to accept for the drag-in."""
 

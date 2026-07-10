@@ -41,10 +41,6 @@ class DragOutFinished:
     # True if the drag was cancelled, False if it completed successfully
 ```
 
-### Internal (do not handle directly)
-
-`DNDDragIn`, `DNDDragOut` and `DNDDropData` are used internally by `DNDApp` and should not be handled in subclasses.
-
 ## Reactive attributes
 
 | Attribute         | Type   | Description                                                                         |
@@ -82,11 +78,21 @@ class DNDApp(DrivenApp):
         self, pos: Offset
     ) -> DNDDragOutOperation | None:
         """Return DNDDragOutOperation to start a drag-out, or None to cancel."""
-        ...
+        return DNDDragOutOperation(
+            uris=["<list of file URIs>"],
+            op="copy|move|either",
+            popup_text="<text to show in preview>",
+            popup_size=int                  # larger gives a smaller popup
+        )
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
         """Return DNDDragInOperation to customize the drag-in, or bool for simple accept/reject."""
-        ...
+        return DNDDragInOperation(
+            accepted=bool,                  # explicitly state whether to accept or reject the drag-in
+            op="copy|move|either",
+            mimes=["<list of MIME types>"]  # list of MIME types to accept
+        )
+        # alternatively, just return True to accept the drag-in with default settings, or False to reject it
 ```
 
 ### Operations
