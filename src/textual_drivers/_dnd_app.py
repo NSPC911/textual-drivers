@@ -179,8 +179,8 @@ class DNDDragOutOperation(NamedTuple):
     op: Literal["copy", "move", "either"]
     popup_text: str
     """Text to show in the drag icon popup. Should be short and descriptive."""
-    popup_size: int = 3
-    """Size of the popup text. The popup text's size is inversely proportional to this value."""
+    popup_size: float = 1
+    """Size of the popup text. The text is scaled by this factor. Higher = Larger."""
 
 
 class DNDDragInOperation(NamedTuple):
@@ -303,7 +303,7 @@ class DNDApp(DrivenApp):
             _osc72("t=p:x=0", b64encode(uri_list)),
             _osc72("t=p:x=1", b64encode(plain)),
             _osc72(
-                f"t=p:x=-1:y=0:X={len(result.popup_text)}:Y={result.popup_size}:o=0",
+                f"t=p:x=-1:y=0:X={result.popup_size}:Y={1}:o=0",
                 b64encode(result.popup_text),
             ),
             _osc72("t=P:x=-1"),

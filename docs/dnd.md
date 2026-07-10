@@ -82,7 +82,7 @@ class DNDApp(DrivenApp):
             uris=["<list of file URIs>"],
             op="copy|move|either",
             popup_text="<text to show in preview>",
-            popup_size=int                  # larger gives a smaller popup
+            popup_size=float                # larger gives a larger popup text
         )
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
