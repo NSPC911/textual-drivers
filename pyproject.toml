@@ -1,15 +1,18 @@
 [project]
 name = "textual-drivers"
-version = "0.7.0"
+version = "0.7.1"
 description = "Drop-in Textual drivers with lock_stdin, register_event_handler, and kitty DnD support"
 readme = "README.md"
 authors = [
-    { name = "NSPC911", email = "87571998+NSPC911@users.noreply.github.com" }
+  { name = "NSPC911", email = "87571998+NSPC911@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "textual>=8.2.7",
+  "textual>=8.2.7",
 ]
+license = "MIT"
+license-files = [ "LICENSE" ]
+keywords = ["textual", "drivers", "drag-and-drop", "dnd", "kitty"]
 
 [project.scripts]
 textual-drivers = "textual_drivers:main"
