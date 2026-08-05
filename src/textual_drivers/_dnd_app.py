@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import re
+from fractions import Fraction
 from inspect import isawaitable
+from math import isfinite
 from shlex import split as shplit
 from typing import Literal, NamedTuple
 
@@ -21,6 +23,9 @@ from textual_drivers._utils import b64encode, safe
 _OSC = "\x1b]"
 _ST = "\x1b\\"
 _DRAG_PAYLOAD_CHUNK_SIZE = 4096
+_MAX_PROTOCOL_INTEGER = 2**31 - 1
+_MAX_TEXT_SCALE_DENOMINATOR = 1024
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
 
 
@@ -208,18 +213,72 @@ class DNDDragOutOperation(NamedTuple):
 
 def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
     if isinstance(label, TextLabel):
-        if label.size <= 0:
-            raise ValueError("TextLabel.size must be greater than zero")
+        if (
+            isinstance(label.size, bool)
+            or not isinstance(label.size, (int, float))
+            or not isfinite(label.size)
+            or label.size <= 0
+        ):
+            raise ValueError("TextLabel.size must be finite and greater than zero")
+        if not isinstance(label.text, str):
+            raise TypeError("TextLabel.text must be a string")
+        if isinstance(label.background_opacity, bool) or not isinstance(
+            label.background_opacity, int
+        ):
+            raise TypeError("TextLabel.background_opacity must be an integer")
         if not 0 <= label.background_opacity <= 1024:
             raise ValueError("TextLabel.background_opacity must be between 0 and 1024")
-        metadata = f"t=p:x=-1:y=0:X={label.size:g}:Y=1:o={label.background_opacity}"
+        scale = Fraction(str(label.size)).limit_denominator(_MAX_TEXT_SCALE_DENOMINATOR)
+        if scale.numerator == 0:
+            raise ValueError("TextLabel.size is too small to represent")
+        if scale.numerator > _MAX_PROTOCOL_INTEGER:
+            raise ValueError("TextLabel.size exceeds the protocol integer range")
+        metadata = (
+            f"t=p:x=-1:y=0:X={scale.numerator}:Y={scale.denominator}"
+            f":o={label.background_opacity}"
+        )
         data: str | bytes = label.text
-    else:
+    elif isinstance(label, ImageLabel):
+        if not isinstance(label.data, bytes):
+            raise TypeError("ImageLabel.data must be bytes")
+        if (
+            isinstance(label.width, bool)
+            or not isinstance(label.width, int)
+            or isinstance(label.height, bool)
+            or not isinstance(label.height, int)
+        ):
+            raise TypeError("ImageLabel dimensions must be integers")
         if label.width <= 0 or label.height <= 0:
             raise ValueError("ImageLabel dimensions must be greater than zero")
+        if label.width > _MAX_PROTOCOL_INTEGER or label.height > _MAX_PROTOCOL_INTEGER:
+            raise ValueError("ImageLabel dimensions exceed the protocol integer range")
+        if label.format not in ("rgb", "rgba", "png"):
+            raise ValueError("ImageLabel.format must be 'rgb', 'rgba', or 'png'")
+        if label.format == "png":
+            if (
+                len(label.data) < 24
+                or not label.data.startswith(_PNG_SIGNATURE)
+                or label.data[8:12] != (13).to_bytes(4, "big")
+                or label.data[12:16] != b"IHDR"
+            ):
+                raise ValueError("ImageLabel PNG data must contain a valid IHDR header")
+            png_width = int.from_bytes(label.data[16:20], "big")
+            png_height = int.from_bytes(label.data[20:24], "big")
+            if (png_width, png_height) != (label.width, label.height):
+                raise ValueError("ImageLabel dimensions must match the PNG dimensions")
+        else:
+            channels = 3 if label.format == "rgb" else 4
+            expected_size = label.width * label.height * channels
+            if len(label.data) != expected_size:
+                raise ValueError(
+                    f"ImageLabel {label.format.upper()} data must contain "
+                    f"exactly {expected_size} bytes"
+                )
         image_format = {"rgb": 24, "rgba": 32, "png": 100}[label.format]
         metadata = f"t=p:x=-1:y={image_format}:X={label.width}:Y={label.height}"
         data = label.data
+    else:
+        raise TypeError("label must be a TextLabel or ImageLabel")
 
     encoded = b64encode(data)
     chunks = [
@@ -343,18 +402,23 @@ class DNDApp(DrivenApp):
         if result is None:
             self._write(_osc72("t=E:y=-1"))
             return
-        self._drag_uris = result.uris
-        self._drag_op = result.op
-        self.is_dragging_out = True
         op_int = {"copy": 1, "move": 2, "either": 3}[result.op]
         uri_list = "\r\n".join(result.uris) + "\r\n"
         plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
         label = result.label or TextLabel(result.popup_text or "", result.popup_size)
+        try:
+            label_sequences = _drag_label_sequences(label)
+        except (TypeError, ValueError):
+            self._write(_osc72("t=E:y=-1"))
+            raise
+        self._drag_uris = result.uris
+        self._drag_op = result.op
+        self.is_dragging_out = True
         self._write(
             _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
             _osc72("t=p:x=0", b64encode(uri_list)),
             _osc72("t=p:x=1", b64encode(plain)),
-            *_drag_label_sequences(label),
+            *label_sequences,
             _osc72("t=P:x=-1"),
         )
 
