@@ -10,7 +10,13 @@ from textual.widgets import Footer, Header, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
 from textual_drivers._dnd_app import Drop, DropData
-from textual_drivers.dnd import DNDApp, DNDDragOutOperation, DragOutFinished
+from textual_drivers.dnd import (
+    DNDApp,
+    DNDDragOutOperation,
+    DragOutFinished,
+    ImageLabel,
+    TextLabel,
+)
 
 
 class DragOutApp(DNDApp):
@@ -64,9 +70,7 @@ class DragOutApp(DNDApp):
             label = f"[blue]{entry.name}/[/blue]" if entry.is_dir() else entry.name
             file_list.add_option(Selection(label, str(entry), initial_state=False))
 
-    async def dnd_drag_out_operation(
-        self, pos: Offset
-    ) -> DNDDragOutOperation | None:
+    async def dnd_drag_out_operation(self, pos: Offset) -> DNDDragOutOperation | None:
         if pos not in self.query_one("#file-list", SelectionList).content_region:
             return
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
@@ -79,7 +83,21 @@ class DragOutApp(DNDApp):
         self.query_one("#status", Label).update(f"Status: dragging {len(uris)} item(s)")
         n = len(uris)
         text = f"{n} file{'s' if n != 1 else ''}"
-        return DNDDragOutOperation(uris, "copy", text)
+        label: TextLabel | ImageLabel = TextLabel(text)
+        if len(selected) == 1:
+            path = Path(selected[0])
+            if path.is_file() and path.suffix.lower() == ".png":
+                try:
+                    data = path.read_bytes()
+                except OSError as error:
+                    self._log(f"Could not read PNG drag image: {error}")
+                else:
+                    if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+                        width = int.from_bytes(data[16:20], "big")
+                        height = int.from_bytes(data[20:24], "big")
+                        label = ImageLabel(data, width, height)
+                        self._log(f"Using {width}x{height} PNG drag image")
+        return DNDDragOutOperation(uris, "copy", label=label)
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None:
         self.query_one("#status", Label).update("Status: idle")

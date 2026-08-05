@@ -8,7 +8,14 @@
 ## Import
 
 ```python
-from textual_drivers.dnd import DNDApp, Drop, DropData, DragOutFinished
+from textual_drivers.dnd import (
+    DNDApp,
+    DragOutFinished,
+    Drop,
+    DropData,
+    ImageLabel,
+    TextLabel,
+)
 ```
 
 ## Messages
@@ -81,8 +88,11 @@ class DNDApp(DrivenApp):
         return DNDDragOutOperation(
             uris=["<list of file URIs>"],
             op="copy|move|either",
-            popup_text="<text to show in preview>",
-            popup_size=float                # larger gives a larger popup text
+            label=TextLabel(
+                text="<text to show in preview>",
+                size=float,                 # scale relative to the terminal font
+                background_opacity=0,       # 0 is transparent, 1024 is opaque
+            ),
         )
 
     async def dnd_drag_in_operation(self, event: DNDDragIn) -> DNDDragInOperation | bool:
@@ -100,6 +110,67 @@ class DNDApp(DrivenApp):
 `DNDDragOutOperation.op` accepts `"copy"`, `"move"` or `"either"`. Prefer `"either"` — it lets the drop target pick, so both copy-only and move-only targets can accept the drag.
 
 `DNDDragInOperation.op` also accepts all three, but the kitty protocol requires a concrete operation in the hover reply: `"either"` resolves to whichever operation the drag source offers (preferring copy). If the source only offers `"move"` and you reply `"copy"` (or vice versa), the drop is refused — check `event.op` if you need to reject incompatible drags yourself.
+
+### Drag labels
+
+`DNDDragOutOperation.label` accepts either a `TextLabel` or an `ImageLabel`. Kitty renders a `TextLabel` using the terminal font. Keep its text short because terminals may render newlines as a single line.
+
+`ImageLabel` accepts raw PNG, RGB, or RGBA bytes. The driver base64 encodes and chunks the data for the protocol; do not base64 encode it yourself. Width and height are pixel dimensions. For raw RGB and RGBA data, pixels must use the sRGB color space.
+
+```python
+png = Path("drag-icon.png").read_bytes()
+width = int.from_bytes(png[16:20], "big")
+height = int.from_bytes(png[20:24], "big")
+label = ImageLabel(
+    data=png,
+    width=width,
+    height=height,
+    format="png",  # also "rgb" or "rgba"
+)
+
+return DNDDragOutOperation(uris=uris, op="either", label=label)
+```
+
+#### Image label footguns
+
+- Kitty does not accept JPEG, WebP, GIF, SVG, or other encoded image formats directly. Convert them to PNG, or decode them to raw RGB/RGBA data, before creating an `ImageLabel`.
+- Pass raw image bytes to `ImageLabel.data`, not an already base64-encoded string. `textual-drivers` performs the base64 encoding required by the protocol.
+- `width` and `height` must exactly match the supplied image data. Changing only these values does not resize an image and may cause Kitty to reject it with `EINVAL`.
+- Kitty uses the supplied pixel dimensions for the drag preview. Sending a full-size photograph can therefore create an enormous preview and waste memory. Resize it to a thumbnail first; a height around 48–64 pixels works well for an icon-and-text card, while `256x256` is a reasonable upper bound for a generic thumbnail.
+- A `TextLabel` and `ImageLabel` are alternative drag images, not layers that Kitty composites. To show an icon and text together, render both into one PNG and send that as an `ImageLabel`.
+- Terminals may reject images that exceed their resource limits with `EFBIG`. Avoid transmitting full-resolution images when only a small drag preview is needed.
+
+Pillow can decode a non-PNG image, apply its EXIF orientation, resize it while preserving its aspect ratio, and encode it as PNG. Pillow is an application dependency and is not installed by `textual-drivers`:
+
+```python
+from io import BytesIO
+from pathlib import Path
+
+from PIL import Image, ImageOps
+
+
+def image_label_from_file(path: Path) -> ImageLabel:
+    with Image.open(path) as source:
+        image = ImageOps.exif_transpose(source).convert("RGBA")
+        image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+
+        output = BytesIO()
+        image.save(output, format="PNG")
+        return ImageLabel(
+            data=output.getvalue(),
+            width=image.width,
+            height=image.height,
+            format="png",
+        )
+
+
+label = image_label_from_file(Path("drag-preview.jpg"))
+return DNDDragOutOperation(uris=uris, op="either", label=label)
+```
+
+Pillow does not decode SVG files by default. Rasterize SVG input with a library such as CairoSVG first, then send the resulting PNG bytes.
+
+The older `popup_text` and `popup_size` arguments remain supported for compatibility and produce a `TextLabel`. New code should use `label`.
 
 ## Requesting data
 
@@ -148,3 +219,5 @@ uv run python -m textual_drivers.demo.drag_in
 # test drag out
 uv run python -m textual_drivers.demo.drag_out
 ```
+
+The drag-out demo uses a text label normally. If exactly one PNG is selected, it uses that PNG as the drag image so image labels can be tested directly in Kitty.

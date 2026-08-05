@@ -20,6 +20,7 @@ from textual_drivers._utils import b64encode, safe
 
 _OSC = "\x1b]"
 _ST = "\x1b\\"
+_DRAG_PAYLOAD_CHUNK_SIZE = 4096
 _DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
 
 
@@ -34,8 +35,8 @@ def _osc72(meta: str, payload: str | None = None) -> str:
 
 class DNDDragIn(Message):
     """Kitty reports a drag is hovering over the app.
-        Handler: on_dnddrag_in (DNDApp internal, calls dnd_drag_in_operation).
-        pos is (-1, -1) when the drag leaves the window.
+    Handler: on_dnddrag_in (DNDApp internal, calls dnd_drag_in_operation).
+    pos is (-1, -1) when the drag leaves the window.
     """
 
     re = re.compile(
@@ -173,14 +174,64 @@ class DragOutFinished(Message):
 # -- Return Types --------------------------------------------------------------
 
 
+class TextLabel(NamedTuple):
+    """Text rendered by the terminal as the drag icon."""
+
+    text: str
+    size: float = 1
+    """Text scale relative to the terminal's base font size."""
+    background_opacity: int = 0
+    """Background opacity from 0 (transparent) to 1024 (opaque)."""
+
+
+class ImageLabel(NamedTuple):
+    """Binary image used as the drag icon."""
+
+    data: bytes
+    """Raw RGB, RGBA, or PNG data. It is base64 encoded for transmission."""
+    width: int
+    height: int
+    format: Literal["rgb", "rgba", "png"] = "png"
+
+
 class DNDDragOutOperation(NamedTuple):
     uris: list[str]
     """URIs to offer for dragging out. Must be file://"""
     op: Literal["copy", "move", "either"]
-    popup_text: str
-    """Text to show in the drag icon popup. Should be short and descriptive."""
+    popup_text: str | None = None
+    """Deprecated text label. Prefer label=TextLabel(...)."""
     popup_size: float = 1
-    """Size of the popup text. The text is scaled by this factor. Higher = Larger."""
+    """Deprecated popup_text scale. Prefer TextLabel.size."""
+    label: TextLabel | ImageLabel | None = None
+    """Text or image to show as the drag icon."""
+
+
+def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
+    if isinstance(label, TextLabel):
+        if label.size <= 0:
+            raise ValueError("TextLabel.size must be greater than zero")
+        if not 0 <= label.background_opacity <= 1024:
+            raise ValueError("TextLabel.background_opacity must be between 0 and 1024")
+        metadata = f"t=p:x=-1:y=0:X={label.size:g}:Y=1:o={label.background_opacity}"
+        data: str | bytes = label.text
+    else:
+        if label.width <= 0 or label.height <= 0:
+            raise ValueError("ImageLabel dimensions must be greater than zero")
+        image_format = {"rgb": 24, "rgba": 32, "png": 100}[label.format]
+        metadata = f"t=p:x=-1:y={image_format}:X={label.width}:Y={label.height}"
+        data = label.data
+
+    encoded = b64encode(data)
+    chunks = [
+        encoded[index : index + _DRAG_PAYLOAD_CHUNK_SIZE]
+        for index in range(0, len(encoded), _DRAG_PAYLOAD_CHUNK_SIZE)
+    ] or [""]
+    sequences = []
+    for index, chunk in enumerate(chunks):
+        more = int(index + 1 < len(chunks))
+        chunk_metadata = f"{metadata}:m={more}" if index == 0 else f"m={more}"
+        sequences.append(_osc72(chunk_metadata, chunk))
+    return sequences
 
 
 class DNDDragInOperation(NamedTuple):
@@ -298,14 +349,12 @@ class DNDApp(DrivenApp):
         op_int = {"copy": 1, "move": 2, "either": 3}[result.op]
         uri_list = "\r\n".join(result.uris) + "\r\n"
         plain = "\n".join(u.removeprefix("file://") for u in result.uris) + "\n"
+        label = result.label or TextLabel(result.popup_text or "", result.popup_size)
         self._write(
             _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
             _osc72("t=p:x=0", b64encode(uri_list)),
             _osc72("t=p:x=1", b64encode(plain)),
-            _osc72(
-                f"t=p:x=-1:y=0:X={result.popup_size}:Y={1}:o=0",
-                b64encode(result.popup_text),
-            ),
+            *_drag_label_sequences(label),
             _osc72("t=P:x=-1"),
         )
 
