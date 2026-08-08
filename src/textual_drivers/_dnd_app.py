@@ -210,6 +210,23 @@ class DNDDragOutOperation(NamedTuple):
     """Extra MIME types to offer for dragging out, with their data."""
 
 
+def _drag_payload_sequences(metadata: str, data: str | bytes) -> list[str]:
+    encoded = b64encode(data)
+    chunks = [
+        encoded[index : index + _DRAG_PAYLOAD_CHUNK_SIZE]
+        for index in range(0, len(encoded), _DRAG_PAYLOAD_CHUNK_SIZE)
+    ] or [""]
+    return [
+        _osc72(
+            f"{metadata}:m={int(index + 1 < len(chunks))}"
+            if index == 0
+            else f"m={int(index + 1 < len(chunks))}",
+            chunk,
+        )
+        for index, chunk in enumerate(chunks)
+    ]
+
+
 def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
     from fractions import Fraction
     from math import isfinite
@@ -275,17 +292,7 @@ def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
     else:
         raise TypeError("label must be a TextLabel or ImageLabel")
 
-    encoded = b64encode(data)
-    chunks = [
-        encoded[index : index + _DRAG_PAYLOAD_CHUNK_SIZE]
-        for index in range(0, len(encoded), _DRAG_PAYLOAD_CHUNK_SIZE)
-    ] or [""]
-    sequences = []
-    for index, chunk in enumerate(chunks):
-        more = int(index + 1 < len(chunks))
-        chunk_metadata = f"{metadata}:m={more}" if index == 0 else f"m={more}"
-        sequences.append(_osc72(chunk_metadata, chunk))
-    return sequences
+    return _drag_payload_sequences(metadata, data)
 
 
 class DNDDragInOperation(NamedTuple):
@@ -310,6 +317,7 @@ class DNDApp(DrivenApp):
 
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
+        self._drag_data: list[str | bytes] = []
         self._drag_op: Literal["copy", "move", "either"] = "copy"
         self._current_drop: Drop | None = None
         self._data_chunks: list[str] = []
@@ -414,18 +422,18 @@ class DNDApp(DrivenApp):
             self._write(_osc72("t=E:y=-1"))
             raise
         self._drag_uris = result.uris
+        self._drag_data = [uri_list, plain, *result.extra_mimes.values()]
         self._drag_op = result.op
         self.state = "drag-out"
         self._write(
             _osc72(
                 f"t=o:o={op_int}",
-                " ".join(("text/uri-list", "text/plain", result.extra_mimes.keys())),
+                " ".join(("text/uri-list", "text/plain", *result.extra_mimes)),
             ),
-            _osc72("t=p:x=0", b64encode(uri_list)),
-            _osc72("t=p:x=1", b64encode(plain)),
             *[
-                _osc72(f"t=p:x={i + 2}", b64encode(data))
-                for i, data in enumerate(result.extra_mimes.values())
+                sequence
+                for index, data in enumerate(self._drag_data)
+                for sequence in _drag_payload_sequences(f"t=p:x={index}", data)
             ],
             *label_sequences,
             _osc72("t=P:x=-1"),
@@ -486,6 +494,7 @@ class DNDApp(DrivenApp):
             if was_active:
                 self.state = "idle"
             self._drag_uris = []
+            self._drag_data = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
                 self.post_message(DragOutFinished(cancelled=m.group("y") == "1"))
@@ -495,13 +504,8 @@ class DNDApp(DrivenApp):
                 self._send_drag_data(int(y))
 
     def _send_drag_data(self, idx: int) -> None:
-        if idx == 0:
-            self._write(
-                _osc72("t=e:y=0:m=0", b64encode("\r\n".join(self._drag_uris) + "\r\n"))
-            )
-        elif idx == 1:
-            plain = "\n".join(u.removeprefix("file://") for u in self._drag_uris) + "\n"
-            self._write(_osc72("t=e:y=1:m=0", b64encode(plain)))
+        if 0 <= idx < len(self._drag_data):
+            self._write(*_drag_payload_sequences(f"t=e:y={idx}", self._drag_data[idx]))
 
     # -- User-facing stubs -----------------------------------------------------
 

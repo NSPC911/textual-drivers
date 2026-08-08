@@ -75,6 +75,39 @@ def test_image_label_payload_is_chunked() -> None:
     assert sequences[1] == "\x1b]72;m=0;eHh4\x1b\\"
 
 
+def test_drag_out_mime_payloads_are_chunked() -> None:
+    class FakeApp:
+        def __init__(self) -> None:
+            self.state = "idle"
+            self.writes: list[tuple[str, ...]] = []
+
+        def dnd_drag_out_operation(self, _pos: object) -> DNDDragOutOperation:
+            return DNDDragOutOperation(
+                ["file:///" + "x" * 3075],
+                "copy",
+                label=TextLabel("item"),
+                extra_mimes={"application/x-example": b"x" * 3075},
+            )
+
+        def _write(self, *sequences: str) -> None:
+            self.writes.append(sequences)
+
+    app = FakeApp()
+    asyncio.run(
+        DNDApp._on_dnddrag_out(
+            cast("DNDApp", cast(Any, app)), cast(Any, SimpleNamespace(pos=(0, 0)))
+        )
+    )
+
+    sequences = app.writes[0]
+    assert sequences[0].endswith(
+        ";text/uri-list text/plain application/x-example\x1b\\"
+    )
+    assert any(sequence.startswith("\x1b]72;t=p:x=0:m=1;") for sequence in sequences)
+    assert any(sequence.startswith("\x1b]72;t=p:x=1:m=1;") for sequence in sequences)
+    assert any(sequence.startswith("\x1b]72;t=p:x=2:m=1;") for sequence in sequences)
+
+
 @pytest.mark.parametrize(
     "label",
     [
