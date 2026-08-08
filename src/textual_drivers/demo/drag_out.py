@@ -55,6 +55,7 @@ class DragOutApp(DNDApp):
     def on_mount(self) -> None:
         self._populate_file_list()
         self._log("Ready — select files and drag out")
+        self.add_dnd_class_target(self.app)
 
     def _populate_file_list(self) -> None:
         file_list = self.query_one("#file-list", SelectionList)

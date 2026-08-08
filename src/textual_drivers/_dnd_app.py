@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import re
-from fractions import Fraction
-from inspect import isawaitable
-from math import isfinite
 from shlex import split as shplit
 from typing import Literal, NamedTuple
 
 from textual import events, on, work
+from textual.dom import DOMNode
 from textual.geometry import Offset
 from textual.message import Message
 from textual.messages import ExitApp
@@ -212,6 +209,9 @@ class DNDDragOutOperation(NamedTuple):
 
 
 def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
+    from fractions import Fraction
+    from math import isfinite
+
     if isinstance(label, TextLabel):
         if (
             isinstance(label.size, bool)
@@ -228,6 +228,7 @@ def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
             raise TypeError("TextLabel.background_opacity must be an integer")
         if not 0 <= label.background_opacity <= 1024:
             raise ValueError("TextLabel.background_opacity must be between 0 and 1024")
+
         scale = Fraction(str(label.size)).limit_denominator(_MAX_TEXT_SCALE_DENOMINATOR)
         if scale.numerator == 0:
             raise ValueError("TextLabel.size is too small to represent")
@@ -311,9 +312,7 @@ class DNDApp(DrivenApp):
     behaviour. Handle Drop, DropData, and DNDDragOutFinished messages for events.
     """
 
-    is_dragging_out: var[bool] = var(False, toggle_class="drag-out-active")
-    is_dragging_in: var[bool] = var(False, toggle_class="drag-in-active")
-    is_drag_in_rej: var[bool] = var(False, toggle_class="drag-in-rejected")
+    state: var[Literal["idle", "drag-in", "drag-in-rej", "drag-out"]] = var("idle")
 
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -324,6 +323,7 @@ class DNDApp(DrivenApp):
         self._close_after_data: bool = False
         self._drop_timeout_timer: Timer | None = None
         self._drop_timeout: float = 30.0
+        self._dnd_class_targets: set[DOMNode] = set()
 
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
@@ -360,16 +360,22 @@ class DNDApp(DrivenApp):
         )
         self._write(_osc72("t=o:x=1"), _osc72("t=a", "*/*"))
 
-    def _set_drag_in(self, accepted: bool | None) -> None:
-        self.is_dragging_in = accepted is True
-        self.is_drag_in_rej = accepted is False
+    def watch_state(self, state: str) -> None:
+        for widget in self._dnd_class_targets:
+            widget.update_classes({
+                "drag-in-active": state == "drag-in",
+                "drag-in-rejected": state == "drag-in-rej",
+                "drag-out-active": state == "drag-out",
+            })
 
     # -- Internal handlers -----------------------------------------------------
 
     async def _on_dnddrag_in(self, event: DNDDragIn) -> None:
+        from inspect import isawaitable
+
         x, y = event.pos
         if x == -1 and y == -1:
-            self._set_drag_in(None)
+            self.state = "idle"
             self._write(_osc72("t=m:o=0"))
             return
         result = self.dnd_drag_in_operation(event)
@@ -380,10 +386,10 @@ class DNDApp(DrivenApp):
         if isinstance(result, bool):
             result = DNDDragInOperation(accepted=result, op="either", mimes=event.mimes)
         if not result.accepted:
-            self._set_drag_in(False)
+            self.state = "drag-in-rej"
             self._write(_osc72("t=m:o=0"))
             return
-        self._set_drag_in(True)
+        self.state = "drag-in"
         # kitty only accepts a concrete operation (1=copy, 2=move) in the
         # t=m reply; anything else is treated as a rejection. For "either",
         # pick whichever operation the drag source actually offers.
@@ -394,6 +400,8 @@ class DNDApp(DrivenApp):
         self._write(_osc72(f"t=m:o={op_int}", " ".join(result.mimes)))
 
     async def _on_dnddrag_out(self, event: DNDDragOut) -> None:
+        from inspect import isawaitable
+
         returned = self.dnd_drag_out_operation(event.pos)
         if isawaitable(returned):
             result = await returned
@@ -413,7 +421,7 @@ class DNDApp(DrivenApp):
             raise
         self._drag_uris = result.uris
         self._drag_op = result.op
-        self.is_dragging_out = True
+        self.state = "drag-out"
         self._write(
             _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
             _osc72("t=p:x=0", b64encode(uri_list)),
@@ -449,6 +457,8 @@ class DNDApp(DrivenApp):
         mime: str,
         close: bool,
     ) -> None:
+        import base64
+
         b64 = "".join(chunks)
         b64 += "=" * (-len(b64) % 4)
         raw = base64.b64decode(b64.encode())
@@ -471,8 +481,9 @@ class DNDApp(DrivenApp):
             return
         code = m.group("code")
         if code == "4":
-            was_active = self.is_dragging_out
-            self.is_dragging_out = False
+            was_active = self.state == "drag-out"
+            if was_active:
+                self.state = "idle"
             self._drag_uris = []
             self._write(_osc72("t=o:x=1"))
             if was_active:
@@ -494,8 +505,7 @@ class DNDApp(DrivenApp):
     # -- User-facing stubs -----------------------------------------------------
 
     async def on_drop(self, event: Drop) -> None:
-        self.is_dragging_out = False
-        self._set_drag_in(None)
+        self.state = "idle"
         if event.rejected:
             event.stop().prevent_default()
 
@@ -552,13 +562,16 @@ class DNDApp(DrivenApp):
     @on(ExitApp)
     def stop_kitty(self) -> None:
         self.close_dnd("cancel")
-        if self.is_dragging_out:
+        if self.state == "drag-out":
             self._write(_osc72("t=E:y=-1"))
         self._write(_osc72("t=o:x=2"), _osc72("t=A", ""))
 
     async def action_quit(self) -> None:
         self.stop_kitty()
         await super().action_quit()
+
+    def add_dnd_class_target(self, widget: DOMNode) -> None:
+        self._dnd_class_targets.add(widget)
 
     def _fatal_error(self) -> None:
         self.stop_kitty()

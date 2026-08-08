@@ -98,7 +98,7 @@ def test_invalid_drag_label_cancels_without_activating_drag() -> None:
         def __init__(self) -> None:
             self._drag_uris = ["existing"]
             self._drag_op = "move"
-            self.is_dragging_out = False
+            self.state = "idle"
             self.writes: list[tuple[str, ...]] = []
 
         def dnd_drag_out_operation(self, _pos: object) -> DNDDragOutOperation:
@@ -121,5 +121,5 @@ def test_invalid_drag_label_cancels_without_activating_drag() -> None:
 
     assert app._drag_uris == ["existing"]
     assert app._drag_op == "move"
-    assert app.is_dragging_out is False
+    assert app.state == "idle"
     assert app.writes == [("\x1b]72;t=E:y=-1\x1b\\",)]

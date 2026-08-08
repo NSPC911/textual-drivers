@@ -50,6 +50,7 @@ class DragInApp(DNDApp):
     def on_mount(self) -> None:
         self._requested_mimes: list[str] = []
         self.Log("Ready — drag a file from your file manager")
+        self.add_dnd_class_target(self.app)
 
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
         zone = self.query_one("#drop-zone", Static)

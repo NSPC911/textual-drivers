@@ -50,20 +50,25 @@ class DragOutFinished:
 
 ## Reactive attributes
 
-| Attribute         | Type   | Description                                                                         |
-| ----------------- | ------ | ----------------------------------------------------------------------------------- |
-| `is_dragging_out` | `bool` | `True` while a drag-out is in progress (between the gesture and `DragOutFinished`). |
-| `is_dragging_in`  | `bool` | `True` while an accepted drag-in is hovering over the window.                       |
-| `is_drag_in_rej`  | `bool` | `True` while a drag-in is hovering but was rejected by `dnd_drag_in_operation`.     |
+| Attribute | Type                                                   | Description                  |
+| --------- | ------------------------------------------------------ | ---------------------------- |
+| `state`   | `Literal["idle", "drag-in", "drag-in-rej", "drag-out"]` | Current drag-and-drop state. |
 
-All three are Textual `var`s, so subclasses can watch them:
+`state` is a Textual `var`, so subclasses can watch it:
 
 ```python
-def watch_is_dragging_out(self, active: bool) -> None:
-    self.query_one("#status", Label).update("Dragging…" if active else "Idle")
+def watch_state(self, state: str) -> None:
+    self.query_one("#status", Label).update(state)
 ```
 
-They can also be styled with TCSS via their toggle classes:
+The state can also be styled with TCSS after registering your widget:
+
+```python
+def on_mount(self) -> None:
+    # not recommended btw, because it causes app-wide restyles
+    # causing flicker and performance issues, but it works for demos
+    self.app.add_dnd_class_target(self.app)
+```
 
 ```css
 DNDApp.drag-in-active {
