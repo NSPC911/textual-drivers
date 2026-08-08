@@ -206,6 +206,8 @@ class DNDDragOutOperation(NamedTuple):
     """Deprecated popup_text scale. Prefer TextLabel.size."""
     label: TextLabel | ImageLabel | None = None
     """Text or image to show as the drag icon."""
+    extra_mimes: dict[str, bytes] = {}
+    """Extra MIME types to offer for dragging out, with their data."""
 
 
 def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
@@ -213,18 +215,15 @@ def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
     from math import isfinite
 
     if isinstance(label, TextLabel):
-        if (
-            isinstance(label.size, bool)
-            or not isinstance(label.size, (int, float))
-            or not isfinite(label.size)
-            or label.size <= 0
+        if not (
+            type(label.size) in (int, float)
+            and isfinite(label.size)
+            and label.size >= 0
         ):
             raise ValueError("TextLabel.size must be finite and greater than zero")
         if not isinstance(label.text, str):
             raise TypeError("TextLabel.text must be a string")
-        if isinstance(label.background_opacity, bool) or not isinstance(
-            label.background_opacity, int
-        ):
+        if type(label.background_opacity) is not int:
             raise TypeError("TextLabel.background_opacity must be an integer")
         if not 0 <= label.background_opacity <= 1024:
             raise ValueError("TextLabel.background_opacity must be between 0 and 1024")
@@ -242,12 +241,7 @@ def _drag_label_sequences(label: TextLabel | ImageLabel) -> list[str]:
     elif isinstance(label, ImageLabel):
         if not isinstance(label.data, bytes):
             raise TypeError("ImageLabel.data must be bytes")
-        if (
-            isinstance(label.width, bool)
-            or not isinstance(label.width, int)
-            or isinstance(label.height, bool)
-            or not isinstance(label.height, int)
-        ):
+        if not (type(label.width) is int and type(label.height) is int):
             raise TypeError("ImageLabel dimensions must be integers")
         if label.width <= 0 or label.height <= 0:
             raise ValueError("ImageLabel dimensions must be greater than zero")
@@ -423,9 +417,16 @@ class DNDApp(DrivenApp):
         self._drag_op = result.op
         self.state = "drag-out"
         self._write(
-            _osc72(f"t=o:o={op_int}", "text/uri-list text/plain"),
+            _osc72(
+                f"t=o:o={op_int}",
+                " ".join(("text/uri-list", "text/plain", result.extra_mimes.keys())),
+            ),
             _osc72("t=p:x=0", b64encode(uri_list)),
             _osc72("t=p:x=1", b64encode(plain)),
+            *[
+                _osc72(f"t=p:x={i + 2}", b64encode(data))
+                for i, data in enumerate(result.extra_mimes.values())
+            ],
             *label_sequences,
             _osc72("t=P:x=-1"),
         )
