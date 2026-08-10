@@ -70,8 +70,12 @@ class DragInApp(DNDApp):
     async def dnd_drag_in_operation(
         self, event: DNDDragIn
     ) -> DNDDragInOperation | bool:
+        # originally I wanted to do below
+        # event.pos in self.query_one("#drop-zone", Static).content_region
+        # but sometimes it just doesn't drop on small windows
+        # but I use small windows, so I just accept all drops for now
         return DNDDragInOperation(
-            accepted=event.pos in self.query_one("#drop-zone", Static).content_region,
+            accepted=True,
             op="either",
             mimes=event.mimes,
         )
@@ -100,6 +104,11 @@ class DragInApp(DNDApp):
 
     @work
     async def on_drop_data(self, event: DropData) -> None:
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(event.data if isinstance(event.data, bytes) else b"")
+            f.flush()
+            self.Log(f"Saved {event.mime} to {f.name}")
         if not isinstance(event.data, list):
             self._log_(f"{event.mime}: {event.data!r}")
         else:
@@ -107,6 +116,7 @@ class DragInApp(DNDApp):
             self._log_(f"Received {len(uris)} file(s) for {event.mime}:")
             for uri in uris:
                 self._log_(f"  {uri}")
+        self._log_(f"Saved")
 
         from .helpers import NarrowOptionsWithInput
 

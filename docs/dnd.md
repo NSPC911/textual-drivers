@@ -13,6 +13,7 @@ from textual_drivers.dnd import (
     DragOutFinished,
     Drop,
     DropData,
+    DropDataError,
     ImageLabel,
     TextLabel,
 )
@@ -36,10 +37,19 @@ class Drop:
 class DropData:
     drop_event: Drop
     # the original Drop event that triggered this data arrival
-    data: list[str] | btes
+    data: list[str] | bytes
     # list[str] if it is a text/uri-list, bytes otherwise
     mime: str
     # mime type of this data chunk
+```
+
+```py
+class DropDataError:
+    drop_event: Drop
+    mime: str
+    error: str
+    # POSIX error name, such as EIO or ETIMEDOUT
+    description: str
 ```
 
 ```py
@@ -179,9 +189,9 @@ The older `popup_text` and `popup_size` arguments remain supported for compatibi
 
 ## Requesting data
 
-When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`. Assembly (base64 decode) runs in a background thread, so large binary MIME types like `image/png` do not block the UI.
+When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
 
-If no data arrives within 30 seconds, `DropData` is posted with `data=b""` as a timeout sentinel — check for this before processing.
+If Kitty reports an error, or no data arrives for 30 seconds, `DropDataError` is posted and the entire drop is cancelled. A successful empty MIME is still reported as `DropData` with `data=b""`.
 
 ### Single MIME (auto-close)
 

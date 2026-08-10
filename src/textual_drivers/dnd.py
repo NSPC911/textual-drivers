@@ -10,6 +10,7 @@ from textual_drivers._dnd_app import (
     DragOutFinished,
     Drop,
     DropData,
+    DropDataError,
     ImageLabel,
     TextLabel,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "DragOutFinished",
     "Drop",
     "DropData",
+    "DropDataError",
     "ImageLabel",
     "TextLabel",
 ]

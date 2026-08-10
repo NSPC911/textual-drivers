@@ -25,6 +25,9 @@ _MAX_PROTOCOL_INTEGER = 2**31 - 1
 _MAX_TEXT_SCALE_DENOMINATOR = 1024
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
+_DROP_ERROR_RE = re.compile(
+    r"t=R:(?P<meta>[^;\x1b]*);(?P<error>[^:;\x1b]+)(?::(?P<description>[^\x1b]*))?"
+)
 
 
 def _osc72(meta: str, payload: str | None = None) -> str:
@@ -166,6 +169,25 @@ class DropData(Message):
             else repr(self.data)
         )
         return f"DropData(drop_event={self.drop_event}, data={data_repr}, mime={self.mime})"
+
+
+class DropDataError(Message):
+    """Posted when Kitty cannot provide requested MIME data."""
+
+    def __init__(
+        self, drop_event: Drop, mime: str, error: str, description: str = ""
+    ) -> None:
+        super().__init__()
+        self.drop_event = drop_event
+        self.mime = mime
+        self.error = error
+        self.description = description
+
+    def __repr__(self) -> str:
+        return (
+            f"DropDataError(drop_event={self.drop_event}, mime={self.mime!r}, "
+            f"error={self.error!r}, description={self.description!r})"
+        )
 
 
 class DragOutFinished(Message):
@@ -358,6 +380,11 @@ class DNDApp(DrivenApp):
             priority=True,
         )
         driver.register_event_handler(
+            BoundedPattern(start="\x1b]72;t=R:", end=_ST),
+            self._handle_drop_error,
+            priority=True,
+        )
+        driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=e:", end=_ST),
             self._handle_drag_progress,
             priority=True,
@@ -451,14 +478,17 @@ class DNDApp(DrivenApp):
             return
         if self._drop_timeout_timer is not None:
             self._drop_timeout_timer.stop()
+            self._drop_timeout_timer = None
         if event.chunk:
             self._data_b64_chunks.append(event.chunk)
         if event.more:
+            self._arm_drop_timeout()
             return
         if self._data_b64_chunks:
             b64 = "".join(self._data_b64_chunks)
             self._data_chunks.append(base64.b64decode(b64 + "=" * (-len(b64) % 4)))
             self._data_b64_chunks = []
+            self._arm_drop_timeout()
             return
         if self._current_drop is None:
             self._data_chunks = []
@@ -470,6 +500,22 @@ class DNDApp(DrivenApp):
             self._close_after_data,
         )
         self._data_chunks = []
+
+    def _handle_drop_error(self, data: str) -> None:
+        m = _DROP_ERROR_RE.search(data)
+        if not m or self._current_drop is None:
+            return
+        meta = dict(
+            part.split("=", 1) for part in m.group("meta").split(":") if "=" in part
+        )
+        if meta.get("x") != str(self._data_mime_idx + 1):
+            return
+        drop = self._current_drop
+        mime = drop.mimes[self._data_mime_idx]
+        self.close_dnd("cancel")
+        self.post_message(
+            DropDataError(drop, mime, m.group("error"), m.group("description") or "")
+        )
 
     @work(thread=True)
     def _assemble_drop(
@@ -527,6 +573,8 @@ class DNDApp(DrivenApp):
 
     # async def on_drop_data(self, event: DropData) -> None: ...
 
+    # async def on_drop_data_error(self, event: DropDataError) -> None: ...
+
     # -- User override methods -------------------------------------------------
 
     async def dnd_drag_out_operation(self, pos: Offset) -> DNDDragOutOperation | None:
@@ -551,13 +599,29 @@ class DNDApp(DrivenApp):
         self._data_mime_idx = index
         self._data_chunks = []
         self._data_b64_chunks = []
+        self._close_after_data = close
+        self._arm_drop_timeout()
+        self._write(_osc72(f"t=r:x={index + 1}"))
+
+    def _arm_drop_timeout(self) -> None:
+        if self._current_drop is None:
+            return
+        drop = self._current_drop
+        index = self._data_mime_idx
         self._drop_timeout_timer = self.set_timer(
             self._drop_timeout,
-            lambda: self.post_message(DropData(event, b"", event.mimes[index])),
+            lambda: self._drop_timed_out(drop, index),
             name="kitty dnd drop request timeout timer",
         )
-        self._close_after_data = close
-        self._write(_osc72(f"t=r:x={index + 1}"))
+
+    def _drop_timed_out(self, drop: Drop, index: int) -> None:
+        if self._current_drop is not drop or self._data_mime_idx != index:
+            return
+        mime = drop.mimes[index]
+        self.close_dnd("cancel")
+        self.post_message(
+            DropDataError(drop, mime, "ETIMEDOUT", "drop data request timed out")
+        )
 
     def close_dnd(self, op: Literal["copy", "move", "cancel"] | None = None) -> None:
         """Close the current drop session, releasing kitty's drop state.
@@ -569,7 +633,12 @@ class DNDApp(DrivenApp):
         if op is None:
             op = self._current_drop.op if self._current_drop is not None else "copy"
         op_int = {"cancel": 0, "copy": 1, "move": 2}[op]
+        if self._drop_timeout_timer is not None:
+            self._drop_timeout_timer.stop()
+            self._drop_timeout_timer = None
         self._current_drop = None
+        self._data_chunks = []
+        self._data_b64_chunks = []
         self._write(_osc72(f"t=r:o={op_int}"))
 
     @on(events.Unmount)
