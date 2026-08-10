@@ -86,16 +86,21 @@ class DNDDragOut(Message):
 class DNDDropData(Message):
     """One t=r data chunk from kitty. Internal - accumulated by on_dnddrop_data."""
 
-    re = re.compile(r"t=r:x=(?P<idx>\d+):m=(?P<more>[01]);(?P<b64>[^\x1b]*)")
+    re = re.compile(r"t=r:(?P<meta>[^;\x1b]*)(?:;(?P<b64>[^\x1b]*))?")
 
     def __init__(self, data: str) -> None:
         super().__init__()
         m = self.re.search(data)
         if not m:
             raise ValueError(f"Invalid t=r chunk: {data!r}")
-        self.idx: int = int(m.group("idx"))
-        self.more: bool = m.group("more") == "1"
-        self.chunk: str = m.group("b64")
+        meta = dict(
+            part.split("=", 1) for part in m.group("meta").split(":") if "=" in part
+        )
+        if "x" not in meta or meta.get("m", "0") not in {"0", "1"}:
+            raise ValueError(f"Invalid t=r chunk: {data!r}")
+        self.idx = int(meta["x"])
+        self.more = meta.get("m", "0") == "1"
+        self.chunk = m.group("b64") or ""
 
     def __repr__(self) -> str:
         return f"DNDDropData(idx={self.idx}, more={self.more}, chunk_len={len(self.chunk)})"
@@ -444,7 +449,9 @@ class DNDApp(DrivenApp):
             return
         if self._drop_timeout_timer is not None:
             self._drop_timeout_timer.stop()
-        self._data_chunks.append(event.chunk)
+        if event.chunk:
+            self._data_chunks.append(event.chunk)
+            return
         if event.more:
             return
         if self._current_drop is None:
