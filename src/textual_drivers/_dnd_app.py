@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 from shlex import split as shplit
 from typing import Literal, NamedTuple
@@ -326,7 +327,8 @@ class DNDApp(DrivenApp):
         self._drag_data: list[str | bytes] = []
         self._drag_op: Literal["copy", "move", "either"] = "copy"
         self._current_drop: Drop | None = None
-        self._data_chunks: list[str] = []
+        self._data_chunks: list[bytes] = []
+        self._data_b64_chunks: list[str] = []
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
         self._drop_timeout_timer: Timer | None = None
@@ -450,9 +452,13 @@ class DNDApp(DrivenApp):
         if self._drop_timeout_timer is not None:
             self._drop_timeout_timer.stop()
         if event.chunk:
-            self._data_chunks.append(event.chunk)
-            return
+            self._data_b64_chunks.append(event.chunk)
         if event.more:
+            return
+        if self._data_b64_chunks:
+            b64 = "".join(self._data_b64_chunks)
+            self._data_chunks.append(base64.b64decode(b64 + "=" * (-len(b64) % 4)))
+            self._data_b64_chunks = []
             return
         if self._current_drop is None:
             self._data_chunks = []
@@ -469,15 +475,11 @@ class DNDApp(DrivenApp):
     def _assemble_drop(
         self,
         drop: Drop,
-        chunks: list[str],
+        chunks: list[bytes],
         mime: str,
         close: bool,
     ) -> None:
-        import base64
-
-        b64 = "".join(chunks)
-        b64 += "=" * (-len(b64) % 4)
-        raw = base64.b64decode(b64.encode())
+        raw = b"".join(chunks)
         assembled: list[str] | bytes
         if mime == "text/uri-list":
             assembled = [
@@ -548,6 +550,7 @@ class DNDApp(DrivenApp):
         self._current_drop = event
         self._data_mime_idx = index
         self._data_chunks = []
+        self._data_b64_chunks = []
         self._drop_timeout_timer = self.set_timer(
             self._drop_timeout,
             lambda: self.post_message(DropData(event, b"", event.mimes[index])),

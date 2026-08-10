@@ -21,7 +21,7 @@ def test_drop_data_parsing(sequence: str, expected: tuple[int, bool, str]) -> No
 
 
 def test_drop_data_finishes_only_on_empty_frame() -> None:
-    assembled: list[tuple[list[str], str]] = []
+    assembled: list[tuple[list[bytes], str]] = []
 
     class FakeTimer:
         def stop(self) -> None:
@@ -30,18 +30,21 @@ def test_drop_data_finishes_only_on_empty_frame() -> None:
     class FakeApp:
         _data_mime_idx = 0
         _drop_timeout_timer = FakeTimer()
-        _data_chunks: list[str] = []
+        _data_chunks: list[bytes] = []
+        _data_b64_chunks: list[str] = []
         _current_drop = SimpleNamespace(mimes=["text/plain"])
         _close_after_data = False
 
         def _assemble_drop(
-            self, _drop: object, chunks: list[str], mime: str, _close: bool
+            self, _drop: object, chunks: list[bytes], mime: str, _close: bool
         ) -> None:
             assembled.append((chunks, mime))
 
     app = cast("DNDApp", cast(Any, FakeApp()))
-    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=0;YWJj\x1b\\"))
+    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=1;YW\x1b\\"))
+    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=0;Jj\x1b\\"))
+    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=0;ZA\x1b\\"))
     assert assembled == []
 
     DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1\x1b\\"))
-    assert assembled == [(["YWJj"], "text/plain")]
+    assert assembled == [([b"abc", b"d"], "text/plain")]
