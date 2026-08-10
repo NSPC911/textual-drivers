@@ -362,7 +362,7 @@ class DNDApp(DrivenApp):
         )
         self._write(_osc72("t=o:x=1"), _osc72("t=a", "*/*"))
 
-    def watch_state(self, state: str) -> None:
+    def _watch_state(self, state: str) -> None:
         for widget in self._dnd_class_targets:
             widget.update_classes({
                 "drag-in-active": state == "drag-in",
