@@ -1,12 +1,10 @@
 """Public re-export of the kitty DnD base app and its messages."""
 
-from textual_drivers._dnd_app import (
-    DNDApp,
-    DNDDragIn,
+from textual_drivers._dnd_app import DNDApp
+from textual_drivers._dnd_protocol import DNDDragIn, DNDDragOut, DNDDropData
+from textual_drivers._dnd_types import (
     DNDDragInOperation,
-    DNDDragOut,
     DNDDragOutOperation,
-    DNDDropData,
     DragOutFinished,
     Drop,
     DropData,

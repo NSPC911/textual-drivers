@@ -3,13 +3,13 @@ from typing import Any, cast
 
 import pytest
 
-from textual_drivers._dnd_app import (
-    DNDApp,
+from textual_drivers._dnd_app import DNDApp
+from textual_drivers._dnd_protocol import (
     DNDDropData,
     DNDDropDataComplete,
-    DropDataError,
-    _DropDataReceiver,
+    DropDataReceiver,
 )
+from textual_drivers._dnd_types import DropDataError
 
 
 @pytest.mark.parametrize(
@@ -27,7 +27,7 @@ def test_drop_data_parsing(sequence: str, expected: tuple[int, bool, str]) -> No
 
 
 def test_drop_data_is_spooled_until_empty_frame() -> None:
-    receiver = _DropDataReceiver()
+    receiver = DropDataReceiver()
     receiver.reset(1)
 
     assert receiver("\x1b]72;t=r:x=1:m=1;YW\x1b\\") is None

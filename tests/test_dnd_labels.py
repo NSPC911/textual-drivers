@@ -5,7 +5,8 @@ from typing import Any, Literal, cast
 
 import pytest
 
-from textual_drivers._dnd_app import DNDApp, _drag_label_sequences
+from textual_drivers._dnd_app import DNDApp
+from textual_drivers._dnd_protocol import drag_label_sequences as _drag_label_sequences
 from textual_drivers.dnd import DNDDragOutOperation, ImageLabel, TextLabel
 
 
