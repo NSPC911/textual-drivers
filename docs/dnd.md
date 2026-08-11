@@ -189,7 +189,7 @@ The older `popup_text` and `popup_size` arguments remain supported for compatibi
 
 ## Requesting data
 
-When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
+When you receive the Drop event (from `on_drop`, or `@on(Drop)`), the actual data is not yet available. You must request it. Incoming chunks are decoded on the terminal input thread and buffered in memory up to 8 MiB, then spooled to disk. `DropData` is posted once all chunks have arrived and been assembled. For `text/uri-list`, comment lines and blank lines are stripped and each URI is an element of `data`.
 
 If Kitty reports an error, or no data arrives for 30 seconds, `DropDataError` is posted and the entire drop is cancelled. A successful empty MIME is still reported as `DropData` with `data=b""`.
 

@@ -159,7 +159,9 @@ EventHandler: TypeAlias = tuple[HandlerPattern, Callable[[str], object], bool]
 RegexHandler: TypeAlias = tuple[
     Literal[0], re.Pattern[str], Callable[[str], object], bool, str
 ]
-GlobHandler: TypeAlias = tuple[Literal[1], GlobMatcher, Callable[[str], object], bool, str]
+GlobHandler: TypeAlias = tuple[
+    Literal[1], GlobMatcher, Callable[[str], object], bool, str
+]
 NonBoundedHandler: TypeAlias = RegexHandler | GlobHandler
 
 _HANDLER_REGEX: Literal[0] = 0
@@ -182,7 +184,7 @@ def _find_bounded(
         e = data.find(end, s + len(start))
         if e == -1:
             break
-        results.append(data[s:(pos := e + len(end))])
+        results.append(data[s : (pos := e + len(end))])
         s = data.find(start, pos)
     return results
 
@@ -244,6 +246,8 @@ class EventHandlerMixin:
         self._non_bounded_handlers: list[NonBoundedHandler] = []
         self._has_non_bounded_handlers: bool = False
         self._bounded_prefixes: set[str] = set()
+        self._bounded_patterns: list[BoundedPattern] = []
+        self._bounded_pending: str = ""
         self.raw_data_signal: Signal[str] = Signal(self._app, "raw_data")
 
     def register_event_handler(
@@ -272,24 +276,27 @@ class EventHandlerMixin:
             handler = (glob_pattern, event_constructor, priority)
             self._has_non_bounded_handlers = True
             self._event_handlers.append(handler)
-            self._non_bounded_handlers.append(
-                (_HANDLER_GLOB, glob_pattern, event_constructor, priority, _glob_prefilter(pattern))
-            )
+            self._non_bounded_handlers.append((
+                _HANDLER_GLOB,
+                glob_pattern,
+                event_constructor,
+                priority,
+                _glob_prefilter(pattern),
+            ))
         elif isinstance(pattern, BoundedPattern):
             self._bounded_prefixes.add(pattern.start[:2])
+            self._bounded_patterns.append(pattern)
             self._event_handlers.append((pattern, event_constructor, priority))
         else:
             self._has_non_bounded_handlers = True
             self._event_handlers.append((pattern, event_constructor, priority))
-            self._non_bounded_handlers.append(
-                (
-                    _HANDLER_REGEX,
-                    pattern,
-                    event_constructor,
-                    priority,
-                    _regex_prefilter(pattern),
-                )
-            )
+            self._non_bounded_handlers.append((
+                _HANDLER_REGEX,
+                pattern,
+                event_constructor,
+                priority,
+                _regex_prefilter(pattern),
+            ))
 
     def _dispatch_custom_handlers(self, data: str) -> str:
         """Dispatch registered handlers and return filtered data.
@@ -309,16 +316,49 @@ class EventHandlerMixin:
 
         self.raw_data_signal.publish(data)
 
-        if not self._event_handlers:
-            return data
-
-        bounded_possible = True
-        if self._bounded_prefixes:
-            bounded_possible = False
+        had_bounded_pending = bool(self._bounded_pending)
+        bounded_possible = had_bounded_pending or not self._bounded_prefixes
+        if self._bounded_prefixes and not bounded_possible:
             for prefix in self._bounded_prefixes:
                 if prefix in data:
                     bounded_possible = True
                     break
+        has_bounded_data = had_bounded_pending or (
+            bool(self._bounded_patterns) and bounded_possible
+        )
+        if self._bounded_pending:
+            data = self._bounded_pending + data
+            self._bounded_pending = ""
+
+        if has_bounded_data:
+            pending_start = len(data)
+            for pattern in self._bounded_patterns:
+                start = data.rfind(pattern.start)
+                if (
+                    start >= 0
+                    and data.find(pattern.end, start + len(pattern.start)) < 0
+                ):
+                    pending_start = min(pending_start, start)
+            if pending_start == len(data):
+                max_start = max(
+                    (len(pattern.start) for pattern in self._bounded_patterns),
+                    default=0,
+                )
+                for start in range(max(0, len(data) - max_start + 1), len(data) - 1):
+                    suffix = data[start:]
+                    if any(
+                        pattern.start.startswith(suffix)
+                        for pattern in self._bounded_patterns
+                    ):
+                        pending_start = start
+                        break
+            if pending_start < len(data):
+                self._bounded_pending = data[pending_start:]
+                data = data[:pending_start]
+
+        if not self._event_handlers:
+            return data
+
         if not bounded_possible and not self._has_non_bounded_handlers:
             return data
         to_strip: list[str] | None = None
@@ -328,7 +368,9 @@ class EventHandlerMixin:
                     first_start = data.find(pattern.start)
                     if first_start == -1:
                         continue
-                    chunks = _find_bounded(data, pattern.start, pattern.end, first_start)
+                    chunks = _find_bounded(
+                        data, pattern.start, pattern.end, first_start
+                    )
                     for chunk in chunks:
                         if priority:
                             if to_strip is None:

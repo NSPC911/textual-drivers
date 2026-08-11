@@ -104,11 +104,6 @@ class DragInApp(DNDApp):
 
     @work
     async def on_drop_data(self, event: DropData) -> None:
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(event.data if isinstance(event.data, bytes) else b"")
-            f.flush()
-            self.Log(f"Saved {event.mime} to {f.name}")
         if not isinstance(event.data, list):
             self._log_(f"{event.mime}: {event.data!r}")
         else:
@@ -116,7 +111,6 @@ class DragInApp(DNDApp):
             self._log_(f"Received {len(uris)} file(s) for {event.mime}:")
             for uri in uris:
                 self._log_(f"  {uri}")
-        self._log_(f"Saved")
 
         from .helpers import NarrowOptionsWithInput
 

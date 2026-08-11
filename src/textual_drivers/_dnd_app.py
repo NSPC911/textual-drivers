@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import base64
 import re
+import tempfile
+import threading
+import time
 from shlex import split as shplit
 from typing import Literal, NamedTuple
 
@@ -23,6 +26,7 @@ _ST = "\x1b\\"
 _DRAG_PAYLOAD_CHUNK_SIZE = 4096
 _MAX_PROTOCOL_INTEGER = 2**31 - 1
 _MAX_TEXT_SCALE_DENOMINATOR = 1024
+_DROP_MEMORY_LIMIT = 8 * 1024 * 1024
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _DRAG_PROGRESS_RE = re.compile(r"t=e:x=(?P<code>\d+)(?::y=(?P<y>-?\d+))?")
 _DROP_ERROR_RE = re.compile(
@@ -108,6 +112,87 @@ class DNDDropData(Message):
 
     def __repr__(self) -> str:
         return f"DNDDropData(idx={self.idx}, more={self.more}, chunk_len={len(self.chunk)})"
+
+
+class DNDDropDataComplete(Message):
+    """A fully received MIME stream. Internal."""
+
+    def __init__(self, idx: int, data: tempfile.SpooledTemporaryFile[bytes]) -> None:
+        super().__init__()
+        self.idx = idx
+        self.data = data
+
+
+class DNDDropDataFailed(Message):
+    """A MIME stream that could not be decoded. Internal."""
+
+    def __init__(self, idx: int, description: str) -> None:
+        super().__init__()
+        self.idx = idx
+        self.description = description
+
+
+class _DropDataReceiver:
+    """Decode and spool DnD data on the terminal input thread."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._idx = 0
+        self._b64_chunks: list[str] = []
+        self._data: tempfile.SpooledTemporaryFile[bytes] | None = None
+        self._last_activity = 0.0
+
+    def reset(self, idx: int) -> None:
+        with self._lock:
+            if self._data is not None:
+                self._data.close()
+            self._idx = idx
+            self._b64_chunks = []
+            self._data = tempfile.SpooledTemporaryFile(  # noqa: SIM115
+                max_size=_DROP_MEMORY_LIMIT
+            )
+            self._last_activity = time.monotonic()
+
+    def cancel(self) -> None:
+        with self._lock:
+            if self._data is not None:
+                self._data.close()
+            self._data = None
+            self._b64_chunks = []
+
+    def idle_for(self) -> float:
+        with self._lock:
+            return time.monotonic() - self._last_activity
+
+    def __call__(self, data: str) -> Message | None:
+        try:
+            event = DNDDropData(data)
+        except ValueError:
+            return None
+        with self._lock:
+            if self._data is None or event.idx != self._idx:
+                return None
+            self._last_activity = time.monotonic()
+            if event.chunk:
+                self._b64_chunks.append(event.chunk)
+            if event.more:
+                return None
+            if self._b64_chunks:
+                encoded = "".join(self._b64_chunks)
+                self._b64_chunks = []
+                try:
+                    self._data.write(
+                        base64.b64decode(encoded + "=" * (-len(encoded) % 4))
+                    )
+                except ValueError as error:
+                    self._data.close()
+                    self._data = None
+                    return DNDDropDataFailed(event.idx, str(error))
+                return None
+            result = self._data
+            result.seek(0)
+            self._data = None
+            return DNDDropDataComplete(event.idx, result)
 
 
 # -- User-facing messages ------------------------------------------------------
@@ -349,8 +434,7 @@ class DNDApp(DrivenApp):
         self._drag_data: list[str | bytes] = []
         self._drag_op: Literal["copy", "move", "either"] = "copy"
         self._current_drop: Drop | None = None
-        self._data_chunks: list[bytes] = []
-        self._data_b64_chunks: list[str] = []
+        self._drop_receiver = _DropDataReceiver()
         self._data_mime_idx: int = 0
         self._close_after_data: bool = False
         self._drop_timeout_timer: Timer | None = None
@@ -376,7 +460,7 @@ class DNDApp(DrivenApp):
         )
         driver.register_event_handler(
             BoundedPattern(start="\x1b]72;t=r:", end=_ST),
-            safe(DNDDropData),
+            self._drop_receiver,
             priority=True,
         )
         driver.register_event_handler(
@@ -473,33 +557,30 @@ class DNDApp(DrivenApp):
             _osc72("t=P:x=-1"),
         )
 
-    def _on_dnddrop_data(self, event: DNDDropData) -> None:
+    def _on_dnddrop_data_complete(self, event: DNDDropDataComplete) -> None:
         if event.idx != self._data_mime_idx + 1:  # ignore unrequested MIMEs
+            event.data.close()
             return
         if self._drop_timeout_timer is not None:
             self._drop_timeout_timer.stop()
             self._drop_timeout_timer = None
-        if event.chunk:
-            self._data_b64_chunks.append(event.chunk)
-        if event.more:
-            self._arm_drop_timeout()
-            return
-        if self._data_b64_chunks:
-            b64 = "".join(self._data_b64_chunks)
-            self._data_chunks.append(base64.b64decode(b64 + "=" * (-len(b64) % 4)))
-            self._data_b64_chunks = []
-            self._arm_drop_timeout()
-            return
         if self._current_drop is None:
-            self._data_chunks = []
+            event.data.close()
             return
         self._assemble_drop(
             self._current_drop,
-            self._data_chunks,
+            event.data,
             self._current_drop.mimes[self._data_mime_idx],
             self._close_after_data,
         )
-        self._data_chunks = []
+
+    def _on_dnddrop_data_failed(self, event: DNDDropDataFailed) -> None:
+        if event.idx != self._data_mime_idx + 1 or self._current_drop is None:
+            return
+        drop = self._current_drop
+        mime = drop.mimes[self._data_mime_idx]
+        self.close_dnd("cancel")
+        self.post_message(DropDataError(drop, mime, "EINVAL", event.description))
 
     def _handle_drop_error(self, data: str) -> None:
         m = _DROP_ERROR_RE.search(data)
@@ -521,11 +602,12 @@ class DNDApp(DrivenApp):
     def _assemble_drop(
         self,
         drop: Drop,
-        chunks: list[bytes],
+        data: tempfile.SpooledTemporaryFile[bytes],
         mime: str,
         close: bool,
     ) -> None:
-        raw = b"".join(chunks)
+        with data:
+            raw = data.read()
         assembled: list[str] | bytes
         if mime == "text/uri-list":
             assembled = [
@@ -597,8 +679,7 @@ class DNDApp(DrivenApp):
         """
         self._current_drop = event
         self._data_mime_idx = index
-        self._data_chunks = []
-        self._data_b64_chunks = []
+        self._drop_receiver.reset(index + 1)
         self._close_after_data = close
         self._arm_drop_timeout()
         self._write(_osc72(f"t=r:x={index + 1}"))
@@ -608,14 +689,16 @@ class DNDApp(DrivenApp):
             return
         drop = self._current_drop
         index = self._data_mime_idx
-        self._drop_timeout_timer = self.set_timer(
-            self._drop_timeout,
+        self._drop_timeout_timer = self.set_interval(
+            max(0.01, min(1.0, self._drop_timeout)),
             lambda: self._drop_timed_out(drop, index),
             name="kitty dnd drop request timeout timer",
         )
 
     def _drop_timed_out(self, drop: Drop, index: int) -> None:
         if self._current_drop is not drop or self._data_mime_idx != index:
+            return
+        if self._drop_receiver.idle_for() < self._drop_timeout:
             return
         mime = drop.mimes[index]
         self.close_dnd("cancel")
@@ -637,8 +720,7 @@ class DNDApp(DrivenApp):
             self._drop_timeout_timer.stop()
             self._drop_timeout_timer = None
         self._current_drop = None
-        self._data_chunks = []
-        self._data_b64_chunks = []
+        self._drop_receiver.cancel()
         self._write(_osc72(f"t=r:o={op_int}"))
 
     @on(events.Unmount)

@@ -26,6 +26,8 @@ class DummyDriver(EventHandlerMixin):
         self._non_bounded_handlers = []
         self._has_non_bounded_handlers = False
         self._bounded_prefixes = set()
+        self._bounded_patterns = []
+        self._bounded_pending = ""
         self.raw_data_signal = RawSignal()  # ty: ignore[invalid-assignment]
         self._app = object()
         self.sent: list[DummyMessage] = []
@@ -78,12 +80,7 @@ MIXED_NO_MATCH_CHUNKS = [
     "mouse",
     "\x1b[<0;10;20m",
 ] * 20_000
-MIXED_MATCHING_CHUNK = (
-    "prefix"
-    "\x1b]72;t=m:x=1:y=2\x1b\\"
-    "mouse:12,34"
-    "\x1b[<35;120;44M"
-)
+MIXED_MATCHING_CHUNK = "prefix\x1b]72;t=m:x=1:y=2\x1b\\mouse:12,34\x1b[<35;120;44M"
 MIXED_MATCHING_CHUNKS = [MIXED_MATCHING_CHUNK] * 20_000
 
 
@@ -136,6 +133,38 @@ def test_bounded_handler_non_match_preserves_data() -> None:
 
     assert driver._dispatch_custom_handlers("plain input") == "plain input"
     assert driver.sent == []
+
+
+def test_bounded_handler_buffers_split_sequence() -> None:
+    driver = DummyDriver()
+    driver.register_event_handler(
+        BoundedPattern("<start>", "<end>"), DummyMessage, priority=True
+    )
+
+    assert driver._dispatch_custom_handlers("key<start>payload") == "key"
+    assert driver.sent == []
+    assert driver._dispatch_custom_handlers("<end>mouse") == "mouse"
+    assert [event.data for event in driver.sent] == ["<start>payload<end>"]
+
+
+def test_bounded_handler_buffers_split_start() -> None:
+    driver = DummyDriver()
+    driver.register_event_handler(
+        BoundedPattern("<start>", "<end>"), DummyMessage, priority=True
+    )
+
+    assert driver._dispatch_custom_handlers("key<sta") == "key"
+    assert driver._dispatch_custom_handlers("rt>payload<end>mouse") == "mouse"
+    assert [event.data for event in driver.sent] == ["<start>payload<end>"]
+
+
+def test_bounded_handler_buffers_maximum_dnd_frame() -> None:
+    driver = make_driver(DummyMessage)
+    frame = f"\x1b]72;t=r:x=1:m=0;{'A' * 4096}\x1b\\"
+
+    assert driver._dispatch_custom_handlers(frame[:4096]) == ""
+    assert driver._dispatch_custom_handlers(frame[4096:]) == ""
+    assert [event.data for event in driver.sent] == [frame]
 
 
 def test_mixed_handlers_preserve_order_and_priority_stripping() -> None:

@@ -3,7 +3,13 @@ from typing import Any, cast
 
 import pytest
 
-from textual_drivers._dnd_app import DNDApp, DNDDropData, DropDataError
+from textual_drivers._dnd_app import (
+    DNDApp,
+    DNDDropData,
+    DNDDropDataComplete,
+    DropDataError,
+    _DropDataReceiver,
+)
 
 
 @pytest.mark.parametrize(
@@ -20,37 +26,18 @@ def test_drop_data_parsing(sequence: str, expected: tuple[int, bool, str]) -> No
     assert (event.idx, event.more, event.chunk) == expected
 
 
-def test_drop_data_finishes_only_on_empty_frame() -> None:
-    assembled: list[tuple[list[bytes], str]] = []
+def test_drop_data_is_spooled_until_empty_frame() -> None:
+    receiver = _DropDataReceiver()
+    receiver.reset(1)
 
-    class FakeTimer:
-        def stop(self) -> None:
-            pass
+    assert receiver("\x1b]72;t=r:x=1:m=1;YW\x1b\\") is None
+    assert receiver("\x1b]72;t=r:x=1:m=0;Jj\x1b\\") is None
+    assert receiver("\x1b]72;t=r:x=1:m=0;ZA\x1b\\") is None
 
-    class FakeApp:
-        _data_mime_idx = 0
-        _drop_timeout_timer = FakeTimer()
-        _data_chunks: list[bytes] = []
-        _data_b64_chunks: list[str] = []
-        _current_drop = SimpleNamespace(mimes=["text/plain"])
-        _close_after_data = False
-
-        def _assemble_drop(
-            self, _drop: object, chunks: list[bytes], mime: str, _close: bool
-        ) -> None:
-            assembled.append((chunks, mime))
-
-        def _arm_drop_timeout(self) -> None:
-            pass
-
-    app = cast("DNDApp", cast(Any, FakeApp()))
-    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=1;YW\x1b\\"))
-    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=0;Jj\x1b\\"))
-    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1:m=0;ZA\x1b\\"))
-    assert assembled == []
-
-    DNDApp._on_dnddrop_data(app, DNDDropData("\x1b]72;t=r:x=1\x1b\\"))
-    assert assembled == [([b"abc", b"d"], "text/plain")]
+    complete = receiver("\x1b]72;t=r:x=1\x1b\\")
+    assert isinstance(complete, DNDDropDataComplete)
+    with complete.data:
+        assert complete.data.read() == b"abcd"
 
 
 @pytest.mark.parametrize(
@@ -76,8 +63,10 @@ def test_drop_data_error_cancels_drop(
     class FakeApp:
         _current_drop: SimpleNamespace | None = drop
         _data_mime_idx = 0
+        _drop_timeout = 30.0
         cancelled = False
         posted: list[DropDataError] = []
+        _drop_receiver = SimpleNamespace(idle_for=lambda: 31.0)
 
         def close_dnd(self, op: str) -> None:
             assert op == "cancel"
