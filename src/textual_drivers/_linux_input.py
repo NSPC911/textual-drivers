@@ -16,7 +16,7 @@ def run_linux_input_thread(driver: Driver, on_event: Callable[[Message], None]) 
     """Shared run_input_thread body for Linux drivers.
 
     Handles the selector loop, pause points, custom handler dispatch, and
-    XTerm parser feeding. on_event is called for each parsed event — drivers
+    XTerm parser feeding. on_event is called for each parsed event - drivers
     use it to intercept specific event types (e.g. CursorPosition in inline mode).
     """
     selector = selectors.SelectSelector()

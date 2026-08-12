@@ -18,7 +18,7 @@ On **exit**, event reporting is re-enabled and the input thread resumes. Nesting
 - Plain key events **cannot** be disabled via escape sequences. `lock_stdin()` drains bytes that are already buffered on POSIX ttys, but terminal or network latency can still deliver bytes after the drain.
 - `lock_stdin()` pauses Textual's stdin reader and silences terminal events, but does **not** restore the terminal to cooked/canonical mode. If your subprocess needs line-buffered input (e.g. `input()` or a shell), call the [`app.suspend()`](https://textual.textualize.io/api/app/#textual.app.App.suspend) context manager.
 
-## Example — querying the terminal
+## Example - querying the terminal
 
 ```python
 import os

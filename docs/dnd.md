@@ -122,9 +122,9 @@ class DNDApp(DrivenApp):
 
 ### Operations
 
-`DNDDragOutOperation.op` accepts `"copy"`, `"move"` or `"either"`. Prefer `"either"` — it lets the drop target pick, so both copy-only and move-only targets can accept the drag.
+`DNDDragOutOperation.op` accepts `"copy"`, `"move"` or `"either"`. Prefer `"either"` - it lets the drop target pick, so both copy-only and move-only targets can accept the drag.
 
-`DNDDragInOperation.op` also accepts all three, but the kitty protocol requires a concrete operation in the hover reply: `"either"` resolves to whichever operation the drag source offers (preferring copy). If the source only offers `"move"` and you reply `"copy"` (or vice versa), the drop is refused — check `event.op` if you need to reject incompatible drags yourself.
+`DNDDragInOperation.op` also accepts all three, but the kitty protocol requires a concrete operation in the hover reply: `"either"` resolves to whichever operation the drag source offers (preferring copy). If the source only offers `"move"` and you reply `"copy"` (or vice versa), the drop is refused - check `event.op` if you need to reject incompatible drags yourself.
 
 ### Drag labels
 

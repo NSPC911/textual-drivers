@@ -260,7 +260,7 @@ class EventHandlerMixin:
         """Register a handler fired when raw stdin input matches *pattern*.
 
         Args:
-            pattern: One of three forms —
+            pattern: One of three forms -
                 ``str``: glob matched against tokenised stdin chunks (fnmatch);
                 ``BoundedPattern(start, end)``: fires for every non-overlapping
                 substring in the chunk that begins with *start* and ends with *end*;

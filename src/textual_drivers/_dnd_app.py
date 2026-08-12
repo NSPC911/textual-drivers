@@ -54,13 +54,13 @@ class DNDApp(DrivenApp):
     _drop_timeout: float = 30.0
     _drop_timeout_timer: Timer | None = None
     _close_after_data: bool = False
+    _drop_receiver = _DropDataReceiver()
 
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
         self._drag_data: list[str | bytes] = []
         self._drag_op: Literal["copy", "move", "either"] = "copy"
         self._current_drop: Drop | None = None
-        self._drop_receiver = _DropDataReceiver()
         self._data_mime_idx: int = 0
 
         driver = self._driver

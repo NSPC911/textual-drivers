@@ -1,13 +1,13 @@
 """
 Interactive test app for textual-drivers.
 
-Left panel — lock_stdin
+Left panel - lock_stdin
     Click the button to hold the stdin lock for 3 s.
     Type keys during the countdown: on_key fires zero times while locked.
-    On unlock, all buffered keystrokes arrive in one burst — proving the
+    On unlock, all buffered keystrokes arrive in one burst - proving the
     input thread was truly paused.
 
-Right panel — register_event_handler
+Right panel - register_event_handler
     Two regex handlers are registered on start-up:
       r"[^\\x1b]"    matches one non-ESC character  → fires on every plain keypress
       r"\\x1b[^\\x1b]+"  matches any ESC-led sequence  → fires on arrow / function keys
@@ -91,7 +91,7 @@ class DriverTestApp(DrivenApp):
             yield Label("Status: unlocked", id="lock-status", classes="unlocked")
             yield Button("Lock stdin for 3 s", id="lock-btn")
             yield Label(
-                "Tip: type keys while locked — they arrive as a burst on unlock.",
+                "Tip: type keys while locked - they arrive as a burst on unlock.",
                 classes="hint",
             )
             yield Log(id="key-log", highlight=True)
@@ -138,14 +138,14 @@ class DriverTestApp(DrivenApp):
 
         with self._driver.lock_stdin():
             for remaining in (3, 2, 1):
-                status.update(f"Status: LOCKED — {remaining}s")
+                status.update(f"Status: LOCKED - {remaining}s")
                 status.set_class(True, "locked")
                 status.set_class(False, "unlocked")
                 self.notify("hi", timeout=1)
                 await asyncio.sleep(1)
 
         key_log.write_line(
-            f"[{_ts()}] --- lock released — buffered keys appear below ---"
+            f"[{_ts()}] --- lock released - buffered keys appear below ---"
         )
         status.update("Status: unlocked")
         status.set_class(True, "unlocked")

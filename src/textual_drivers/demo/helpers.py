@@ -90,3 +90,9 @@ class NarrowOptionsWithInput(ModalScreen[str | None]):
                 self.focus_next()
             case "shift+tab":
                 self.focus_previous()
+
+    def on_click(self, event: events.Click) -> None:
+        """Handle exit attempts"""
+        if event.widget is self:
+            event.stop().prevent_default()
+            self.dismiss(None)

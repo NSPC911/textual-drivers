@@ -11,7 +11,7 @@ from textual_drivers._mixin import EventHandlerMixin, LockStdinMixin
 class CustomHeadlessDriver(LockStdinMixin, EventHandlerMixin, HeadlessDriver):
     """HeadlessDriver with lock_stdin and register_event_handler support.
 
-    lock_stdin is a true no-op here — there is no stdin input thread to pause.
+    lock_stdin is a true no-op here - there is no stdin input thread to pause.
     register_event_handler handlers never fire because no stdin is read.
     Useful for testing code that references the driver API.
     """

@@ -1,10 +1,11 @@
-"""kitty drag-in demo — drag files FROM the desktop/OS INTO the terminal."""
+"""kitty drag-in demo - drag files FROM the desktop/OS INTO the terminal."""
 
 from __future__ import annotations
 
-from textual import work
+from textual import on, work
 from textual.app import ComposeResult
-from textual.widgets import Footer, Header, Label, Log, Static
+from textual.containers import HorizontalGroup
+from textual.widgets import Button, Footer, Label, Log, Static
 
 from textual_drivers.dnd import (
     DNDApp,
@@ -19,37 +20,59 @@ class DragInApp(DNDApp):
     TITLE = "kitty drag-in demo"
 
     CSS = """
-    Screen { layout: vertical; }
+    Screen {
+        layout: vertical;
+    }
 
-    #hint { color: $accent; text-style: bold; margin: 1 1 0 1; }
+    HorizontalGroup {
+        border: solid $panel;
+        margin: 0 1;
+        padding: 0 1;
+    }
+
+    #hint {
+        color: $accent;
+        text-style: bold;
+        margin: 1 1 1 3;
+        width: 1fr;
+    }
 
     #drop-zone {
         height: 1fr;
         margin: 0 1;
-        border: round $primary;
+        border: solid $primary;
         padding: 1 2;
         color: $text-muted;
         content-align: center middle;
     }
-    #drop-zone.hovering { border: round $success; color: $text; }
+
+    #drop-zone.hovering {
+        border: dashed $success;
+        color: $text;
+    }
 
     Log {
+        background: transparent;
         height: 10;
-        margin: 1;
-        border: tall $panel;
+        margin: 0 1;
+        padding: 0 1;
+        border: solid $panel;
+        scrollbar-background: transparent;
+        scrollbar-corner-color: transparent;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield Label("Drag from anywhere into this window", id="hint")
+        with HorizontalGroup():
+            yield Label("Drag from anywhere into this window", id="hint")
+            yield Button("Stop Drag", id="stop-drag", variant="error", tooltip="Use if the drop wasn't properly cancelled")
         yield Static("Waiting for drag…", id="drop-zone")
         yield Log(id="log", highlight=True)
         yield Footer()
 
     def on_mount(self) -> None:
         self._requested_mimes: list[str] = []
-        self.Log("Ready — drag a file from your file manager")
+        self.Log("Ready - drag a file from your file manager")
         self.add_dnd_class_target(self.app)
 
     async def on_dnddrag_in(self, event: DNDDragIn) -> None:
@@ -57,7 +80,7 @@ class DragInApp(DNDApp):
         x, y = event.pos
         if x == -1 and y == -1:
             zone.remove_class("hovering")
-            zone.update("Drag left the window — drop here to transfer")
+            zone.update("Drag left the window - drop here to transfer")
             self.Log("Drag left window")
         else:
             mime_str = ", ".join(event.mimes) or "?"
@@ -131,6 +154,11 @@ class DragInApp(DNDApp):
             return
         self._requested_mimes.append(reqmime)
         self.request_data(event.drop_event, all_mimes.index(reqmime), close=False)
+
+    @on(Button.Pressed, "#stop-drag")
+    def stop_drag(self) -> None:
+        self.Log("Stopping drag")
+        self.close_dnd()
 
     def Log(self, msg: str) -> None:  # noqa: N802
         self.query_one("#log", Log).write_line(msg)

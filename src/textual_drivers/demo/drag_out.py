@@ -1,12 +1,13 @@
-"""kitty drag-out demo — drag files FROM the terminal TO the desktop/OS."""
+"""kitty drag-out demo - drag files FROM the terminal TO the desktop/OS."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.containers import HorizontalGroup
 from textual.geometry import Offset
-from textual.widgets import Footer, Header, Label, Log, SelectionList
+from textual.widgets import Footer, Label, Log, SelectionList
 from textual.widgets.selection_list import Selection
 
 from textual_drivers.dnd import (
@@ -26,36 +27,48 @@ class DragOutApp(DNDApp):
     CSS = """
     Screen { layout: vertical; }
 
-    #hint   { color: $accent; text-style: bold; margin: 1 1 0 1; }
-    #status { color: $text-muted; margin: 0 1 1 1; }
+    #hint   {
+        color: $accent;
+        text-style: bold;
+    }
+
+    HorizontalGroup {
+        border: solid $panel;
+        margin: 0 1;
+        padding: 1 1 1 4;
+    }
 
     SelectionList {
         height: 1fr;
         margin: 0 1;
         border: round $primary;
+        background: transparent;
     }
 
     Log {
+        background: transparent;
         height: 10;
-        margin: 1;
-        border: tall $panel;
+        margin: 0 1;
+        padding: 0 1;
+        border: solid $panel;
+        scrollbar-background: transparent;
+        scrollbar-corner-color: transparent;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield Label(
-            "Select files with Space, then drag out of the terminal window",
-            id="hint",
-        )
-        yield Label("Status: idle", id="status")
+        with HorizontalGroup():
+            yield Label(
+                "Select files with Space, then drag out of the terminal window",
+                id="hint",
+            )
         yield SelectionList[str](id="file-list")
         yield Log(id="log", highlight=True)
         yield Footer()
 
     def on_mount(self) -> None:
         self._populate_file_list()
-        self._log("Ready — select files and drag out")
+        self._log("Ready - select files and drag out")
         self.add_dnd_class_target(self.app)
 
     def _populate_file_list(self) -> None:
@@ -77,15 +90,14 @@ class DragOutApp(DNDApp):
             return
         selected: list[str] = list(self.query_one("#file-list", SelectionList).selected)
         if not selected:
-            self._log("No files selected — cancelling drag")
+            self._log("No files selected - cancelling drag")
             return None
         uris = [Path(p).as_uri() for p in selected]
         names = ", ".join(Path(p).name for p in selected)
         self._log(f"Dragging {len(uris)} item(s): {names}")
-        self.query_one("#status", Label).update(f"Status: dragging {len(uris)} item(s)")
         n = len(uris)
-        text = f"{n} file{'s' if n != 1 else ''}"
-        label: TextLabel | ImageLabel = TextLabel(text)
+        text = f" {n} file{'s' if n != 1 else ''}"
+        label: TextLabel | ImageLabel = TextLabel(text, size=4)
         if len(selected) == 1:
             path = Path(selected[0])
             if path.is_file() and path.suffix.lower() == ".png":
@@ -99,10 +111,17 @@ class DragOutApp(DNDApp):
                         height = int.from_bytes(data[20:24], "big")
                         label = ImageLabel(data, width, height)
                         self._log(f"Using {width}x{height} PNG drag image")
-        return DNDDragOutOperation(uris, "copy", label=label)
+        return DNDDragOutOperation(
+            uris,
+            "copy",
+            label=label,
+            extra_mimes={
+                "did-you-know-you-can-do/stuff-like-this?": b"not an empty string btw",
+                "this-means-you-can-read/mime-types-before-dropping": b"and-then-do-something-with-them",
+            },
+        )
 
     async def on_drag_out_finished(self, event: DragOutFinished) -> None:
-        self.query_one("#status", Label).update("Status: idle")
         self._log("Drag cancelled" if event.cancelled else "Drag finished")
 
     def _log(self, msg: str) -> None:
@@ -111,7 +130,6 @@ class DragOutApp(DNDApp):
     async def on_drop(self, event: Drop) -> None:
         self._log(f"Dropped {event!r}")
         self._log("Don't drop here!")
-        self.request_data(event, 0, close=True)
 
     def on_drop_data(self, event: DropData) -> None:
         self._log(f"Drop data: {event!r}")

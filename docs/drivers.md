@@ -66,6 +66,6 @@ Feel free to contribute extra mixins for other features.
 
 ## Headless mode
 
-- `lock_stdin()` on `CustomHeadlessDriver` is an immediate no-op — no stdin thread exists in headless mode.
+- `lock_stdin()` on `CustomHeadlessDriver` is an immediate no-op - no stdin thread exists in headless mode.
 - `register_event_handler` handlers never fire in headless mode for the same reason.
 - `CustomWindowsDriver` is only importable on Windows.

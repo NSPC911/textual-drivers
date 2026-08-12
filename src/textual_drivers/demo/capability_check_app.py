@@ -120,13 +120,13 @@ class CapabilityCheckApp(DrivenApp):
         with Vertical(classes="panel"):
             yield Label("Sixel Graphics", classes="panel-title")
             yield Button("Check Sixel Support", id="sixel-btn")
-            yield Label("—", id="sixel-status", classes="status idle")
+            yield Label("-", id="sixel-status", classes="status idle")
             yield Log(id="sixel-log", highlight=True)
 
         with Vertical(classes="panel"):
             yield Label("Kitty Image Protocol", classes="panel-title")
             yield Button("Check Kitty Support", id="kitty-btn")
-            yield Label("—", id="kitty-status", classes="status idle")
+            yield Label("-", id="kitty-status", classes="status idle")
             yield Log(id="kitty-log", highlight=True)
 
         yield Footer()
@@ -159,7 +159,7 @@ class CapabilityCheckApp(DrivenApp):
 
         m = re.search(r"\x1b\[\?([0-9;]+)c", text)
         if not m:
-            self._tset_status("sixel", "No response — not supported", "unsupported")
+            self._tset_status("sixel", "No response - not supported", "unsupported")
         else:
             params = [int(p) for p in m.group(1).split(";") if p]
             self._tlog("sixel", f"[{_ts()}] Params: {params}")
@@ -198,7 +198,7 @@ class CapabilityCheckApp(DrivenApp):
             detail = m.group(1) if m else text.strip()
             self._tset_status("kitty", f"Not supported: {detail}", "unsupported")
         else:
-            self._tset_status("kitty", "No response — not supported", "unsupported")
+            self._tset_status("kitty", "No response - not supported", "unsupported")
 
         self.call_from_thread(self._enable_btn, "kitty-btn")
 

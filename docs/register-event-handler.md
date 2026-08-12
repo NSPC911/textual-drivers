@@ -91,7 +91,7 @@ If a Event is returned from the function/method, it is posted to the app as usua
 
 ## raw_data_signal
 
-`driver.raw_data_signal` is a `Signal[str]` that fires once for every raw stdin read chunk, **before** any pattern matching or filtering. It is the lowest-level observation point available — the string is exactly what came off the file descriptor, decoded from UTF-8 but otherwise unprocessed.
+`driver.raw_data_signal` is a `Signal[str]` that fires once for every raw stdin read chunk, **before** any pattern matching or filtering. It is the lowest-level observation point available - the string is exactly what came off the file descriptor, decoded from UTF-8 but otherwise unprocessed.
 
 Subscribe in `on_mount` using Textual's signal API:
 
