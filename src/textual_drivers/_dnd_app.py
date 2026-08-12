@@ -51,6 +51,9 @@ class DNDApp(DrivenApp):
 
     state: var[Literal["idle", "drag-in", "drag-in-rej", "drag-out"]] = var("idle")
     _dnd_class_targets: set[DOMNode] = set()
+    _drop_timeout: float = 30.0
+    _drop_timeout_timer: Timer | None = None
+    _close_after_data: bool = False
 
     def _on_mount(self) -> None:
         self._drag_uris: list[str] = []
@@ -59,9 +62,6 @@ class DNDApp(DrivenApp):
         self._current_drop: Drop | None = None
         self._drop_receiver = _DropDataReceiver()
         self._data_mime_idx: int = 0
-        self._close_after_data: bool = False
-        self._drop_timeout_timer: Timer | None = None
-        self._drop_timeout: float = 30.0
 
         driver = self._driver
         if not hasattr(driver, "register_event_handler"):
